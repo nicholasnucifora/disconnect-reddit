@@ -92,7 +92,7 @@ export default function FeedClient() {
       expires_at: expiresAt.toISOString(),
     });
 
-    setDismissedIds((prev) => new Set([...prev, postId]));
+    setDismissedIds((prev) => new Set([...Array.from(prev), postId]));
     setPosts((prev) => prev.filter((p) => p.id !== postId));
   }
 
