@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/c/Users/Nebula PC/Development/disconnect-reddit\" && npm install 2>&1)",
+      "Bash(cd \"/c/Users/Nebula PC/Development/disconnect-reddit\" && npm audit --audit-level=high 2>&1 | tail -20)",
+      "Bash(cd \"/c/Users/Nebula PC/Development/disconnect-reddit\" && npm install 2>&1 | tail -10)",
+      "Bash(cd \"/c/Users/Nebula PC/Development/disconnect-reddit\" && npm audit --audit-level=high 2>&1 | grep \"^next\\\\|severity\\\\|via\\\\|fix\" | head -20)"
+    ]
+  }
+}
