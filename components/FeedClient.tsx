@@ -85,7 +85,7 @@ export default function FeedClient() {
 
   async function dismissPost(postId: string) {
     // Update UI immediately (optimistic)
-    setDismissedIds((prev) => new Set([...prev, postId]));
+    setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));
     setPosts((prev) => prev.filter((p) => p.id !== postId));
 
     // Persist in background
