@@ -24,8 +24,12 @@ export default function NavBar() {
       .eq("username", USERNAME)
       .eq("post_id", postId);
 
-    // Signal FeedClient to re-add the post via custom event
+    // Remove from local dismissed cache and signal FeedClient to re-add
     try {
+      const local: string[] = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
+      const updated = local.filter((id) => id !== postId);
+      sessionStorage.setItem("localDismissed", JSON.stringify(updated));
+
       const cached = sessionStorage.getItem(`post:${postId}`);
       if (cached) {
         window.dispatchEvent(

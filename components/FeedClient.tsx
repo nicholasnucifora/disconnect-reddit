@@ -32,8 +32,17 @@ export default function FeedClient() {
           .gt("expires_at", new Date().toISOString()),
       ]);
 
+      // Merge Supabase dismissed IDs with sessionStorage local dismissed IDs.
+      // sessionStorage acts as an immediate cache for dismissals that may not have
+      // persisted to Supabase yet (e.g. user navigated home very quickly).
+      const supabaseIds = (dismissedResult.data ?? []).map((r: { post_id: string }) => r.post_id);
+      let localIds: string[] = [];
+      try {
+        localIds = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
+      } catch { /* ignore */ }
+
       setSubreddits((subsResult.data ?? []).map((r: { subreddit: string }) => r.subreddit));
-      setDismissedIds(new Set((dismissedResult.data ?? []).map((r: { post_id: string }) => r.post_id)));
+      setDismissedIds(new Set([...supabaseIds, ...localIds]));
       setReady(true);
     }
 
@@ -88,7 +97,17 @@ export default function FeedClient() {
     setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));
     setPosts((prev) => prev.filter((p) => p.id !== postId));
 
-    // Persist in background
+    // Mirror to sessionStorage so the filter survives FeedClient remounts
+    // even if the Supabase insert hasn't completed yet
+    try {
+      const local = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
+      if (!local.includes(postId)) {
+        local.push(postId);
+        sessionStorage.setItem("localDismissed", JSON.stringify(local));
+      }
+    } catch { /* ignore */ }
+
+    // Persist to Supabase in background
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
     supabase.from("dismissed_posts").insert({

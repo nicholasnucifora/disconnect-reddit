@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { RedditPost } from "@/lib/reddit";
 
@@ -29,6 +30,7 @@ interface PostCardProps {
 }
 
 export default function PostCard({ post, onDismiss }: PostCardProps) {
+  const router = useRouter();
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
   const imageUrl = getImageUrl(post);
@@ -36,15 +38,20 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     ? `https://www.reddit.com${post.permalink}`
     : `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}/${slug}/`;
 
-  function saveAndNavigate() {
+  function navigateToPost(e: React.MouseEvent) {
+    e.preventDefault();
+    // Save post data for the detail page
     try {
       sessionStorage.setItem(`post:${post.id}`, JSON.stringify(post));
     } catch {
-      // sessionStorage unavailable — detail page will fetch from API
+      // sessionStorage unavailable
     }
-    // Dismiss on view — user can tap "Keep in feed" on the detail page to undo
-    onDismiss(post.id);
+    // Navigate first — dismiss after so there's no visible flicker on the feed
+    router.push(detailUrl);
+    setTimeout(() => onDismiss(post.id), 150);
   }
+
+  const imageUrl2 = imageUrl; // alias for thumbnail link
 
   return (
     <article className="bg-gray-900 rounded-lg p-4 border border-gray-800 relative">
@@ -59,15 +66,15 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
       <div className="flex gap-3">
         {/* Thumbnail */}
-        {imageUrl && (
-          <Link href={detailUrl} className="flex-shrink-0 mt-1">
+        {imageUrl2 && (
+          <a href={detailUrl} onClick={navigateToPost} className="flex-shrink-0 mt-1">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={imageUrl}
+              src={imageUrl2}
               alt=""
               className="w-16 h-16 object-cover rounded bg-gray-800"
             />
-          </Link>
+          </a>
         )}
 
         <div className="flex-1 min-w-0 pr-6">
@@ -85,9 +92,9 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
           {/* Title */}
           <h2 className="text-lg font-semibold text-gray-100 leading-snug mb-2">
-            <Link href={detailUrl} onClick={saveAndNavigate} className="hover:text-indigo-300 transition-colors">
+            <a href={detailUrl} onClick={navigateToPost} className="hover:text-indigo-300 transition-colors cursor-pointer">
               {post.title}
-            </Link>
+            </a>
           </h2>
 
           {/* Meta row */}
@@ -102,14 +109,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
           {/* Actions */}
           <div className="mt-3 flex items-center gap-3">
-            <Link
+            <a
               href={detailUrl}
-              onClick={saveAndNavigate}
-              className="text-xs text-gray-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+              onClick={navigateToPost}
+              className="text-xs text-gray-400 hover:text-indigo-300 transition-colors flex items-center gap-1 cursor-pointer"
             >
               <span>💬</span>
               <span>{post.numComments} comment{post.numComments !== 1 ? "s" : ""}</span>
-            </Link>
+            </a>
             <a
               href={redditUrl}
               target="_blank"
