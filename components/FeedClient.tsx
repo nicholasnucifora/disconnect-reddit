@@ -98,6 +98,23 @@ export default function FeedClient() {
     });
   }
 
+  // Listen for "Keep in feed" from the detail page to re-add a post
+  useEffect(() => {
+    function handleUndismiss(e: Event) {
+      const post = (e as CustomEvent<RedditPost>).detail;
+      setDismissedIds((prev) => {
+        const next = new Set(Array.from(prev));
+        next.delete(post.id);
+        return next;
+      });
+      setPosts((prev) =>
+        [post, ...prev].sort((a, b) => b.createdUtc - a.createdUtc)
+      );
+    }
+    window.addEventListener("undismissPost", handleUndismiss);
+    return () => window.removeEventListener("undismissPost", handleUndismiss);
+  }, []);
+
   if (!ready) {
     return (
       <div className="flex items-center justify-center py-16">

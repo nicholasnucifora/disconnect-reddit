@@ -42,6 +42,8 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     } catch {
       // sessionStorage unavailable — detail page will fetch from API
     }
+    // Dismiss on view — user can tap "Keep in feed" on the detail page to undo
+    onDismiss(post.id);
   }
 
   return (
