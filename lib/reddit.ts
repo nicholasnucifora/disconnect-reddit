@@ -150,14 +150,12 @@ function mapPullpushPost(d: any): RedditPost {
 }
 
 // Uses Pullpush.io (free Pushshift alternative) — works from Vercel servers, no auth needed.
-// Returns top-scoring posts from the last 48h instead of Reddit's "hot" algorithm.
 export async function fetchSubredditPosts(
   subreddit: string,
   _sort: "hot" | "top" | "new" = "hot",
   limit = 25
 ): Promise<RedditPost[]> {
-  const after = Math.floor(Date.now() / 1000) - 48 * 3600;
-  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}&sort=desc&sort_type=score&after=${after}`;
+  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
@@ -168,7 +166,15 @@ export async function fetchSubredditPosts(
   }
 
   const json = await res.json();
-  const posts: unknown[] = json?.data ?? [];
+  // Pullpush wraps results in either json.data or json.results depending on version
+  const posts: unknown[] = json?.data ?? json?.results ?? [];
+
+  if (posts.length === 0) {
+    throw new Error(
+      `r/${subreddit}: Pullpush returned 0 posts (raw keys: ${Object.keys(json ?? {}).join(", ")})`
+    );
+  }
+
   return posts.map(mapPullpushPost);
 }
 
