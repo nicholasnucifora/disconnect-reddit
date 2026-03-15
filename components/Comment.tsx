@@ -16,6 +16,16 @@ function formatScore(score: number): string {
   return String(score);
 }
 
+function countDescendants(comments: CommentOrMore[]): number {
+  let n = 0;
+  for (const c of comments) {
+    if (!c.isMore) {
+      n += 1 + countDescendants((c as RedditComment).replies);
+    }
+  }
+  return n;
+}
+
 interface CommentProps {
   comment: CommentOrMore;
   subreddit: string;
@@ -36,7 +46,6 @@ function MoreStub({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Use the first child id as the entry point for the thread fetch
   const commentId = stub.children[0] ?? stub.id;
 
   async function loadMore() {
@@ -66,9 +75,7 @@ function MoreStub({
         disabled={loading}
         className="text-xs text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
       >
-        {loading
-          ? "Loading…"
-          : `Load ${stub.count > 0 ? stub.count : ""} more replies`}
+        {loading ? "Loading…" : `Load ${stub.count > 0 ? stub.count : ""} more replies`}
       </button>
     </div>
   );
@@ -83,6 +90,7 @@ function RegularComment({
   subreddit: string;
   postId: string;
 }) {
+  const [collapsed, setCollapsed] = useState(false);
   const [replies, setReplies] = useState<CommentOrMore[]>(comment.replies);
 
   function handleMoreLoaded(index: number, loaded: CommentOrMore[]) {
@@ -93,51 +101,60 @@ function RegularComment({
     });
   }
 
+  const descendantCount = countDescendants(replies);
+
   return (
     <div className={comment.depth > 0 ? "border-l border-gray-700 ml-4 pl-3" : ""}>
-      {/* Comment header */}
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1 text-xs text-gray-500">
+      {/* Clickable header — collapses/expands the comment */}
+      <div
+        className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1 text-xs text-gray-500 cursor-pointer select-none hover:text-gray-300 transition-colors"
+        onClick={() => setCollapsed((c) => !c)}
+      >
+        <span className="font-mono text-gray-600">{collapsed ? "[+]" : "[-]"}</span>
         <span className="font-medium text-gray-300">u/{comment.author}</span>
         <span>▲ {formatScore(comment.score)}</span>
         <span>{timeAgo(comment.createdUtc)}</span>
+        {collapsed && descendantCount > 0 && (
+          <span className="text-gray-600">({descendantCount} {descendantCount === 1 ? "reply" : "replies"})</span>
+        )}
       </div>
 
-      {/* Body */}
-      <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
-        {comment.body}
-      </p>
+      {!collapsed && (
+        <>
+          <p className="text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
+            {comment.body}
+          </p>
 
-      {/* Replies */}
-      {replies.length > 0 && (
-        <div className="mt-2 space-y-2">
-          {replies.map((reply, i) =>
-            reply.isMore ? (
-              <MoreStub
-                key={reply.id}
-                stub={reply}
-                subreddit={subreddit}
-                postId={postId}
-                onLoaded={(loaded) => handleMoreLoaded(i, loaded)}
-              />
-            ) : (
-              <RegularComment
-                key={reply.id}
-                comment={reply}
-                subreddit={subreddit}
-                postId={postId}
-              />
-            )
+          {replies.length > 0 && (
+            <div className="mt-2 space-y-2">
+              {replies.map((reply, i) =>
+                reply.isMore ? (
+                  <MoreStub
+                    key={reply.id}
+                    stub={reply}
+                    subreddit={subreddit}
+                    postId={postId}
+                    onLoaded={(loaded) => handleMoreLoaded(i, loaded)}
+                  />
+                ) : (
+                  <RegularComment
+                    key={reply.id}
+                    comment={reply}
+                    subreddit={subreddit}
+                    postId={postId}
+                  />
+                )
+              )}
+            </div>
           )}
-        </div>
+        </>
       )}
     </div>
   );
 }
 
 export default function Comment({ comment, subreddit, postId }: CommentProps) {
-  const [replacedWith, setReplacedWith] = useState<CommentOrMore[] | null>(
-    null
-  );
+  const [replacedWith, setReplacedWith] = useState<CommentOrMore[] | null>(null);
 
   if (replacedWith) {
     return (
@@ -160,11 +177,5 @@ export default function Comment({ comment, subreddit, postId }: CommentProps) {
     );
   }
 
-  return (
-    <RegularComment
-      comment={comment}
-      subreddit={subreddit}
-      postId={postId}
-    />
-  );
+  return <RegularComment comment={comment} subreddit={subreddit} postId={postId} />;
 }

@@ -33,7 +33,16 @@ export default function PostPage() {
   const postId = params.postId as string;
   const slug = params.slug as string;
 
-  const [post, setPost] = useState<RedditPost | null>(null);
+  // Seed post from sessionStorage immediately so metadata shows before API responds
+  const [post, setPost] = useState<RedditPost | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const cached = sessionStorage.getItem(`post:${postId}`);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
   const [comments, setComments] = useState<CommentOrMore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -148,7 +157,11 @@ export default function PostPage() {
               {/* Open on Reddit */}
               <div className="border-t border-gray-800 pt-3 mt-1">
                 <a
-                  href={`https://www.reddit.com${post.permalink}`}
+                  href={
+                    post.permalink
+                      ? `https://www.reddit.com${post.permalink}`
+                      : `https://www.reddit.com/r/${subreddit}/comments/${postId}/${slug}/`
+                  }
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-xs text-gray-500 hover:text-gray-300 transition-colors"

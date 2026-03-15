@@ -7,7 +7,8 @@
       "Bash(cd \"/c/Users/Nebula PC/Development/disconnect-reddit\" && npm audit --audit-level=high 2>&1 | grep \"^next\\\\|severity\\\\|via\\\\|fix\" | head -20)",
       "Bash(cd \"C:/Users/Nebula PC/Development/disconnect-reddit\" && npx tsc --noEmit 2>&1 | head -60)",
       "Bash(cd \"C:/Users/Nebula PC/Development/disconnect-reddit\" && node -e \"const pkg = require\\('./node_modules/@supabase/ssr/package.json'\\); console.log\\(pkg.version\\)\")",
-      "Bash(cd \"C:/Users/Nebula PC/Development/disconnect-reddit\" && npx tsc --noEmit 2>&1)"
+      "Bash(cd \"C:/Users/Nebula PC/Development/disconnect-reddit\" && npx tsc --noEmit 2>&1)",
+      "Bash(find:*)"
     ]
   }
 }

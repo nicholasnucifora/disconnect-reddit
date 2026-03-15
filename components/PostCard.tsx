@@ -32,6 +32,17 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
   const imageUrl = getImageUrl(post);
+  const redditUrl = post.permalink
+    ? `https://www.reddit.com${post.permalink}`
+    : `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}/${slug}/`;
+
+  function saveAndNavigate() {
+    try {
+      sessionStorage.setItem(`post:${post.id}`, JSON.stringify(post));
+    } catch {
+      // sessionStorage unavailable — detail page will fetch from API
+    }
+  }
 
   return (
     <article className="bg-gray-900 rounded-lg p-4 border border-gray-800 relative">
@@ -72,7 +83,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
           {/* Title */}
           <h2 className="text-base font-semibold text-gray-100 leading-snug mb-2">
-            <Link href={detailUrl} className="hover:text-indigo-300 transition-colors">
+            <Link href={detailUrl} onClick={saveAndNavigate} className="hover:text-indigo-300 transition-colors">
               {post.title}
             </Link>
           </h2>
@@ -91,13 +102,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           <div className="mt-3 flex items-center gap-3">
             <Link
               href={detailUrl}
+              onClick={saveAndNavigate}
               className="text-xs text-gray-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
             >
               <span>💬</span>
               <span>{post.numComments} comment{post.numComments !== 1 ? "s" : ""}</span>
             </Link>
             <a
-              href={`https://www.reddit.com${post.permalink}`}
+              href={redditUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
