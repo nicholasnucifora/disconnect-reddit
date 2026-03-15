@@ -46,54 +46,6 @@ export interface CommentTree {
 
 const USER_AGENT = "disconnect-reddit/0.1.0 (by disconnect-app)";
 
-// Module-level token cache — reused across requests within the same function instance
-let cachedToken: { value: string; expiresAt: number } | null = null;
-
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.value;
-  }
-
-  const clientId = process.env.REDDIT_CLIENT_ID;
-  const clientSecret = process.env.REDDIT_CLIENT_SECRET;
-
-  if (!clientId || !clientSecret) {
-    throw new Error("REDDIT_CLIENT_ID and REDDIT_CLIENT_SECRET env vars are not set");
-  }
-
-  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
-
-  const res = await fetch("https://www.reddit.com/api/v1/access_token", {
-    method: "POST",
-    headers: {
-      Authorization: `Basic ${credentials}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": USER_AGENT,
-    },
-    body: "grant_type=client_credentials",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to get Reddit access token: ${res.status} ${res.statusText}`);
-  }
-
-  const json = await res.json();
-  // Expire 60s early to avoid using a token right as it expires
-  cachedToken = {
-    value: json.access_token,
-    expiresAt: Date.now() + (json.expires_in - 60) * 1000,
-  };
-
-  return cachedToken.value;
-}
-
-function authHeaders(token: string) {
-  return {
-    Authorization: `Bearer ${token}`,
-    "User-Agent": USER_AGENT,
-  };
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPost(child: any): RedditPost {
   const d = child.data;
@@ -160,17 +112,17 @@ function mapComment(child: any, depth = 0): CommentOrMore {
   } satisfies RedditComment;
 }
 
+// Called client-side so the request comes from the user's browser IP, not Vercel's servers.
+// Reddit's .json endpoints allow browser CORS requests — no API key needed.
 export async function fetchSubredditPosts(
   subreddit: string,
   sort: "hot" | "top" | "new" = "hot",
   limit = 25
 ): Promise<RedditPost[]> {
-  const token = await getAccessToken();
-  const url = `https://oauth.reddit.com/r/${subreddit}/${sort}?limit=${limit}`;
+  const url = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=${limit}`;
 
   const res = await fetch(url, {
-    headers: authHeaders(token),
-    next: { revalidate: 300 },
+    headers: { "User-Agent": USER_AGENT },
   });
 
   if (!res.ok) {
@@ -189,12 +141,10 @@ export async function fetchPostComments(
   postId: string,
   slug: string
 ): Promise<CommentTree> {
-  const token = await getAccessToken();
-  const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}/${slug}?limit=200`;
+  const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}/${slug}.json?limit=200`;
 
   const res = await fetch(url, {
-    headers: authHeaders(token),
-    next: { revalidate: 60 },
+    headers: { "User-Agent": USER_AGENT },
   });
 
   if (!res.ok) {
@@ -205,7 +155,6 @@ export async function fetchPostComments(
 
   const json = await res.json();
 
-  // Reddit returns a two-element array: [postListing, commentListing]
   const postChild = json[0]?.data?.children?.[0];
   if (!postChild) {
     throw new Error("Unexpected Reddit response structure for post.");
@@ -223,11 +172,10 @@ export async function fetchMoreComments(
   postId: string,
   commentId: string
 ): Promise<RedditComment[]> {
-  const token = await getAccessToken();
-  const url = `https://oauth.reddit.com/r/${subreddit}/comments/${postId}/comment/${commentId}`;
+  const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}/comment/${commentId}.json`;
 
   const res = await fetch(url, {
-    headers: authHeaders(token),
+    headers: { "User-Agent": USER_AGENT },
   });
 
   if (!res.ok) {
@@ -238,7 +186,6 @@ export async function fetchMoreComments(
 
   const json = await res.json();
 
-  // Reddit returns a two-element array; comments are in the second listing
   const commentChildren: unknown[] = json[1]?.data?.children ?? [];
 
   return commentChildren
