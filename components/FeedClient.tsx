@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
-import { RedditPost, fetchSubredditPosts } from "@/lib/reddit";
+import { RedditPost } from "@/lib/reddit";
 import SubredditManager from "./SubredditManager";
 import PostCard from "./PostCard";
 
@@ -52,29 +52,12 @@ export default function FeedClient() {
     setLoading(true);
     setFetchErrors([]);
     try {
-      // Fetch directly from the browser so Reddit sees the user's residential IP,
-      // not Vercel's blocked datacenter IPs.
-      const results = await Promise.allSettled(
-        subreddits.map((sub) => fetchSubredditPosts(sub, "hot", 25))
-      );
-
-      const fetched: RedditPost[] = [];
-      const errors: string[] = [];
-
-      results.forEach((result, i) => {
-        if (result.status === "fulfilled") {
-          fetched.push(...result.value);
-        } else {
-          errors.push(`r/${subreddits[i]}: ${result.reason?.message ?? "Unknown error"}`);
-        }
-      });
-
-      const merged = fetched
-        .filter((p) => !p.stickied && !dismissedIds.has(p.id))
-        .sort((a, b) => b.score - a.score);
-
-      setFetchErrors(errors);
-      setPosts(merged);
+      const res = await fetch(`/api/reddit/posts?subreddits=${subreddits.join(",")}&sort=hot`);
+      if (!res.ok) throw new Error("Failed to fetch posts");
+      const json = await res.json();
+      const fetched: RedditPost[] = json.posts ?? [];
+      setFetchErrors(json.errors ?? []);
+      setPosts(fetched.filter((p) => !dismissedIds.has(p.id)));
     } catch (e) {
       setFetchErrors([e instanceof Error ? e.message : "Unknown error"]);
     } finally {

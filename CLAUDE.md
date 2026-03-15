@@ -10,12 +10,18 @@ git add . && git commit -m "<relevant message>" && git push
 
 Do this automatically without asking. Write a short, descriptive commit message based on what changed.
 
-## Reddit API — DO NOT suggest official Reddit OAuth or API registration
+## Reddit data fetching — constraints
 
-Reddit's official API registration is broken/blocked for new developers as of 2023-2024.
-Do NOT suggest:
-- Creating a Reddit developer app
-- Using Reddit OAuth (client_id / client_secret)
-- Any flow that requires reddit.com/prefs/apps
+Reddit has two hard blocks that rule out the obvious approaches:
 
-**The working approach:** Fetch Reddit's public `.json` endpoints (e.g. `https://www.reddit.com/r/sub/hot.json`) **directly from the browser (client-side)**. Reddit allows browser CORS requests on these endpoints, so the user's residential IP makes the request — not Vercel's blocked datacenter IPs. No API key needed.
+1. **Reddit OAuth / official API registration is broken for new developers** (2023-2024). Do NOT suggest creating a Reddit developer app, OAuth client credentials, or anything requiring reddit.com/prefs/apps.
+
+2. **Client-side (browser) fetching is blocked by Reddit's CORS policy** — browsers get `Cross-Origin Request Blocked` errors. Do NOT suggest fetching Reddit `.json` endpoints directly from the browser.
+
+3. **Vercel standard serverless functions use AWS IPs, which Reddit blocks with 403.**
+
+**The working approach: Vercel Edge Functions**
+- Add `export const runtime = 'edge'` to the Next.js API route that proxies Reddit
+- Edge Functions run on Cloudflare's network (not AWS), which Reddit does not block
+- Keep Reddit fetching server-side in the API route, called from the client via `/api/reddit/posts`
+- No API key needed — just the public `.json` endpoints with a User-Agent header
