@@ -150,12 +150,13 @@ function mapPullpushPost(d: any): RedditPost {
 }
 
 // Uses Pullpush.io (free Pushshift alternative) — works from Vercel servers, no auth needed.
+// sort=desc gives newest posts first.
 export async function fetchSubredditPosts(
   subreddit: string,
   _sort: "hot" | "top" | "new" = "hot",
   limit = 25
 ): Promise<RedditPost[]> {
-  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}`;
+  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}&sort=desc`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
@@ -166,7 +167,6 @@ export async function fetchSubredditPosts(
   }
 
   const json = await res.json();
-  // Pullpush wraps results in either json.data or json.results depending on version
   const posts: unknown[] = json?.data ?? json?.results ?? [];
 
   if (posts.length === 0) {
@@ -181,13 +181,11 @@ export async function fetchSubredditPosts(
 export async function fetchPostComments(
   subreddit: string,
   postId: string,
-  slug: string
+  _slug: string
 ): Promise<CommentTree> {
-  const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}/${slug}.json?limit=200`;
+  const url = `https://api.pullpush.io/reddit/search/comment/?link_id=t3_${postId}&size=500`;
 
-  const res = await fetch(url, {
-    headers: BROWSER_HEADERS,
-  });
+  const res = await fetch(url, { headers: BROWSER_HEADERS });
 
   if (!res.ok) {
     throw new Error(
@@ -196,17 +194,61 @@ export async function fetchPostComments(
   }
 
   const json = await res.json();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const flat: any[] = json?.data ?? json?.results ?? [];
 
-  const postChild = json[0]?.data?.children?.[0];
-  if (!postChild) {
-    throw new Error("Unexpected Reddit response structure for post.");
+  // Build a tree from the flat list using parent_id relationships
+  const commentMap = new Map<string, RedditComment>();
+  for (const d of flat) {
+    commentMap.set(d.id, {
+      id: d.id,
+      author: d.author ?? "[deleted]",
+      body: d.body ?? "",
+      score: d.score ?? 0,
+      createdUtc: d.created_utc ?? 0,
+      replies: [],
+      depth: 0,
+      isMore: false,
+      count: 0,
+    });
   }
-  const post = mapPost(postChild);
 
-  const commentChildren: unknown[] = json[1]?.data?.children ?? [];
-  const comments = commentChildren.map((c) => mapComment(c, 0));
+  const roots: CommentOrMore[] = [];
+  for (const d of flat) {
+    const comment = commentMap.get(d.id);
+    if (!comment) continue;
+    if (d.parent_id?.startsWith("t3_")) {
+      roots.push(comment);
+    } else if (d.parent_id?.startsWith("t1_")) {
+      const parent = commentMap.get(d.parent_id.slice(3));
+      if (parent) {
+        parent.replies.push(comment);
+      } else {
+        roots.push(comment); // parent not in set, treat as root
+      }
+    }
+  }
 
-  return { post, comments };
+  // Set depths recursively
+  function setDepths(comments: CommentOrMore[], depth: number) {
+    for (const c of comments) {
+      if (!c.isMore) {
+        (c as RedditComment).depth = depth;
+        setDepths((c as RedditComment).replies, depth + 1);
+      }
+    }
+  }
+  setDepths(roots, 0);
+
+  // Stub post — CommentThread only uses comments, not the post field
+  const post: RedditPost = {
+    id: postId, title: "", author: "", subreddit, score: 0,
+    numComments: flat.length, url: "", permalink: "", thumbnail: null,
+    selftext: "", isVideo: false, isSelf: false, createdUtc: 0,
+    flair: null, domain: "", stickied: false,
+  };
+
+  return { post, comments: roots };
 }
 
 export async function fetchMoreComments(
