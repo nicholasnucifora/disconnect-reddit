@@ -24,5 +24,6 @@ Reddit has two hard blocks that rule out the obvious approaches:
 - Use `https://api.pullpush.io/reddit/search/submission/?subreddit=X&sort=desc&sort_type=score&after=<48h_timestamp>` for fetching posts
 - Pullpush is a free public Pushshift-style Reddit archive — no auth, no API key, works from any server
 - Returns top-scoring posts from the last 48h (not Reddit's "hot" algorithm, but close enough for personal use)
+- Comments: `https://api.pullpush.io/reddit/search/comment/?link_id=${postId}&size=100` — use bare post ID, NO `t3_` prefix (Pullpush rejects it with 400)
 - Fetch server-side in the Next.js API route with `export const runtime = 'edge'`
 - Do NOT try to fetch from reddit.com or oauth.reddit.com — all datacenter IPs (AWS, Cloudflare) are blocked

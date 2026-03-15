@@ -183,7 +183,7 @@ export async function fetchPostComments(
   postId: string,
   _slug: string
 ): Promise<CommentTree> {
-  const url = `https://api.pullpush.io/reddit/search/comment/?link_id=t3_${postId}&size=100`;
+  const url = `https://api.pullpush.io/reddit/search/comment/?link_id=${postId}&size=100`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
