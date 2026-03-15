@@ -52,80 +52,14 @@ const BROWSER_HEADERS = {
   "Accept-Encoding": "gzip, deflate, br",
 };
 
+// Arctic Shift returns posts as flat objects (no {kind, data} wrapper)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapPost(child: any): RedditPost {
-  const d = child.data;
+function mapArchivePost(d: any): RedditPost {
   return {
     id: d.id,
-    title: d.title,
-    author: d.author,
-    subreddit: d.subreddit,
-    score: d.score,
-    numComments: d.num_comments,
-    url: d.url,
-    permalink: d.permalink,
-    thumbnail:
-      d.thumbnail &&
-      d.thumbnail !== "self" &&
-      d.thumbnail !== "default" &&
-      d.thumbnail !== "nsfw" &&
-      d.thumbnail !== "spoiler" &&
-      d.thumbnail.startsWith("http")
-        ? d.thumbnail
-        : null,
-    selftext: d.selftext ?? "",
-    isVideo: d.is_video ?? false,
-    isSelf: d.is_self ?? false,
-    createdUtc: d.created_utc,
-    flair: d.link_flair_text ?? null,
-    domain: d.domain ?? "",
-    stickied: d.stickied ?? false,
-  };
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapComment(child: any, depth = 0): CommentOrMore {
-  if (child.kind === "more") {
-    const d = child.data;
-    return {
-      id: d.id,
-      isMore: true,
-      children: d.children ?? [],
-      count: d.count ?? 0,
-      parentId: d.parent_id ?? "",
-    } satisfies RedditMoreComments;
-  }
-
-  const d = child.data;
-  const replies: CommentOrMore[] = [];
-
-  if (d.replies && typeof d.replies === "object" && d.replies.data?.children) {
-    for (const reply of d.replies.data.children) {
-      replies.push(mapComment(reply, depth + 1));
-    }
-  }
-
-  return {
-    id: d.id,
+    title: d.title ?? "",
     author: d.author ?? "[deleted]",
-    body: d.body ?? "",
-    score: d.score ?? 0,
-    createdUtc: d.created_utc ?? 0,
-    replies,
-    depth,
-    isMore: false,
-    count: 0,
-  } satisfies RedditComment;
-}
-
-// Pullpush returns posts as flat objects (no {kind, data} wrapper like Reddit's native API)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mapPullpushPost(d: any): RedditPost {
-  return {
-    id: d.id,
-    title: d.title,
-    author: d.author ?? "[deleted]",
-    subreddit: d.subreddit,
+    subreddit: d.subreddit ?? "",
     score: d.score ?? 0,
     numComments: d.num_comments ?? 0,
     url: d.url ?? "",
@@ -149,8 +83,7 @@ function mapPullpushPost(d: any): RedditPost {
   };
 }
 
-// Uses Arctic Shift (arctic-shift.photon-reddit.com) — actively maintained Reddit archive,
-// works from Vercel servers, no auth needed, has recent data.
+// Uses Arctic Shift — actively maintained Reddit archive, works from Vercel, no auth needed.
 export async function fetchSubredditPosts(
   subreddit: string,
   _sort: "hot" | "top" | "new" = "hot",
@@ -176,7 +109,7 @@ export async function fetchSubredditPosts(
     );
   }
 
-  return posts.map(mapPullpushPost);
+  return posts.map(mapArchivePost);
 }
 
 export async function fetchPostComments(
@@ -184,22 +117,43 @@ export async function fetchPostComments(
   postId: string,
   _slug: string
 ): Promise<CommentTree> {
-  const url = `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=500`;
+  // Fetch post data and comments in parallel
+  const [postRes, commentsRes] = await Promise.all([
+    fetch(
+      `https://arctic-shift.photon-reddit.com/api/posts/search?ids=${postId}`,
+      { headers: BROWSER_HEADERS }
+    ),
+    fetch(
+      `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=100`,
+      { headers: BROWSER_HEADERS }
+    ),
+  ]);
 
-  const res = await fetch(url, { headers: BROWSER_HEADERS });
+  // Build post — best effort, fall back to stub if fetch fails
+  let post: RedditPost = {
+    id: postId, title: "", author: "", subreddit, score: 0,
+    numComments: 0, url: "", permalink: "", thumbnail: null,
+    selftext: "", isVideo: false, isSelf: false, createdUtc: 0,
+    flair: null, domain: "", stickied: false,
+  };
+  if (postRes.ok) {
+    const postJson = await postRes.json();
+    const d = postJson?.data?.[0];
+    if (d) post = mapArchivePost(d);
+  }
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
+  if (!commentsRes.ok) {
+    const body = await commentsRes.text().catch(() => "");
     throw new Error(
-      `Failed to fetch comments for post ${postId}: ${res.status} ${res.statusText} — ${body}`
+      `Failed to fetch comments for post ${postId}: ${commentsRes.status} ${commentsRes.statusText} — ${body}`
     );
   }
 
-  const json = await res.json();
+  const json = await commentsRes.json();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flat: any[] = json?.data ?? json?.results ?? [];
 
-  // Build a tree from the flat list using parent_id relationships
+  // Build comment tree from flat list using parent_id
   const commentMap = new Map<string, RedditComment>();
   for (const d of flat) {
     commentMap.set(d.id, {
@@ -226,12 +180,11 @@ export async function fetchPostComments(
       if (parent) {
         parent.replies.push(comment);
       } else {
-        roots.push(comment); // parent not in set, treat as root
+        roots.push(comment);
       }
     }
   }
 
-  // Set depths recursively
   function setDepths(comments: CommentOrMore[], depth: number) {
     for (const c of comments) {
       if (!c.isMore) {
@@ -242,39 +195,10 @@ export async function fetchPostComments(
   }
   setDepths(roots, 0);
 
-  // Stub post — CommentThread only uses comments, not the post field
-  const post: RedditPost = {
-    id: postId, title: "", author: "", subreddit, score: 0,
-    numComments: flat.length, url: "", permalink: "", thumbnail: null,
-    selftext: "", isVideo: false, isSelf: false, createdUtc: 0,
-    flair: null, domain: "", stickied: false,
-  };
-
   return { post, comments: roots };
 }
 
-export async function fetchMoreComments(
-  subreddit: string,
-  postId: string,
-  commentId: string
-): Promise<RedditComment[]> {
-  const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}/comment/${commentId}.json`;
-
-  const res = await fetch(url, {
-    headers: BROWSER_HEADERS,
-  });
-
-  if (!res.ok) {
-    throw new Error(
-      `Failed to fetch more comments (${commentId}): ${res.status} ${res.statusText}`
-    );
-  }
-
-  const json = await res.json();
-
-  const commentChildren: unknown[] = json[1]?.data?.children ?? [];
-
-  return commentChildren
-    .map((c) => mapComment(c, 0))
-    .filter((c): c is RedditComment => !c.isMore);
+// Not currently used (legacy "load more" via Reddit direct — kept for reference)
+export async function fetchMoreComments(): Promise<RedditComment[]> {
+  return [];
 }

@@ -1,7 +1,7 @@
 "use client";
 
+import Link from "next/link";
 import { RedditPost } from "@/lib/reddit";
-import CommentThread from "./CommentThread";
 
 function timeAgo(utcSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - utcSeconds;
@@ -16,20 +16,22 @@ function formatScore(score: number): string {
   return String(score);
 }
 
+function getImageUrl(post: RedditPost): string | null {
+  if (/\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(post.url)) return post.url;
+  if (post.domain === "i.redd.it" || post.domain === "i.imgur.com") return post.url;
+  if (post.thumbnail) return post.thumbnail;
+  return null;
+}
+
 interface PostCardProps {
   post: RedditPost;
   onDismiss: (id: string) => void;
-  isExpanded: boolean;
-  onToggleExpand: (id: string) => void;
 }
 
-export default function PostCard({
-  post,
-  onDismiss,
-  isExpanded,
-  onToggleExpand,
-}: PostCardProps) {
+export default function PostCard({ post, onDismiss }: PostCardProps) {
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
+  const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
+  const imageUrl = getImageUrl(post);
 
   return (
     <article className="bg-gray-900 rounded-lg p-4 border border-gray-800 relative">
@@ -37,89 +39,74 @@ export default function PostCard({
       <button
         onClick={() => onDismiss(post.id)}
         aria-label="Dismiss post"
-        className="absolute top-3 right-3 text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none"
+        className="absolute top-3 right-3 text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none z-10"
       >
         ✕
       </button>
 
-      {/* Subreddit label */}
-      <div className="mb-1">
-        <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wide">
-          r/{post.subreddit}
-        </span>
-        {post.flair && (
-          <span className="ml-2 text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
-            {post.flair}
-          </span>
+      <div className="flex gap-3">
+        {/* Thumbnail */}
+        {imageUrl && (
+          <Link href={detailUrl} className="flex-shrink-0 mt-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={imageUrl}
+              alt=""
+              className="w-16 h-16 object-cover rounded bg-gray-800"
+            />
+          </Link>
         )}
-      </div>
 
-      {/* Title */}
-      <h2 className="text-base font-semibold text-gray-100 leading-snug pr-6 mb-2">
-        <a
-          href={post.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="hover:text-indigo-300 transition-colors"
-        >
-          {post.title}
-        </a>
-      </h2>
+        <div className="flex-1 min-w-0 pr-6">
+          {/* Subreddit label */}
+          <div className="mb-1">
+            <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wide">
+              r/{post.subreddit}
+            </span>
+            {post.flair && (
+              <span className="ml-2 text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+                {post.flair}
+              </span>
+            )}
+          </div>
 
-      {/* Meta row */}
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-        <span>
-          by{" "}
-          <a
-            href={`https://www.reddit.com/user/${post.author}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hover:text-gray-300 transition-colors"
-          >
-            u/{post.author}
-          </a>
-        </span>
-        <span aria-label={`${post.score} points`}>
-          ▲ {formatScore(post.score)}
-        </span>
-        <span>{timeAgo(post.createdUtc)}</span>
-        {!post.isSelf && (
-          <span className="text-gray-600 italic">{post.domain}</span>
-        )}
-      </div>
+          {/* Title */}
+          <h2 className="text-base font-semibold text-gray-100 leading-snug mb-2">
+            <Link href={detailUrl} className="hover:text-indigo-300 transition-colors">
+              {post.title}
+            </Link>
+          </h2>
 
-      {/* Actions */}
-      <div className="mt-3 flex items-center gap-3">
-        <button
-          onClick={() => onToggleExpand(post.id)}
-          className="text-xs text-gray-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
-        >
-          <span>💬</span>
-          <span>
-            {post.numComments} comment{post.numComments !== 1 ? "s" : ""}
-            {isExpanded ? " ▲" : " ▼"}
-          </span>
-        </button>
-        <a
-          href={`https://www.reddit.com${post.permalink}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
-        >
-          Open on Reddit ↗
-        </a>
-      </div>
+          {/* Meta row */}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+            <span>by u/{post.author}</span>
+            <span aria-label={`${post.score} points`}>▲ {formatScore(post.score)}</span>
+            <span>{timeAgo(post.createdUtc)}</span>
+            {!post.isSelf && (
+              <span className="text-gray-600 italic">{post.domain}</span>
+            )}
+          </div>
 
-      {/* Comment thread (expanded) */}
-      {isExpanded && (
-        <div className="mt-4 border-t border-gray-800 pt-4">
-          <CommentThread
-            subreddit={post.subreddit}
-            postId={post.id}
-            slug={slug}
-          />
+          {/* Actions */}
+          <div className="mt-3 flex items-center gap-3">
+            <Link
+              href={detailUrl}
+              className="text-xs text-gray-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+            >
+              <span>💬</span>
+              <span>{post.numComments} comment{post.numComments !== 1 ? "s" : ""}</span>
+            </Link>
+            <a
+              href={`https://www.reddit.com${post.permalink}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+            >
+              Open on Reddit ↗
+            </a>
+          </div>
         </div>
-      )}
+      </div>
     </article>
   );
 }

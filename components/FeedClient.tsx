@@ -11,14 +11,12 @@ export default function FeedClient() {
   const [subreddits, setSubreddits] = useState<string[]>([]);
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
-  const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
 
   const supabase = createClient();
 
-  // Load subreddits + dismissed IDs on mount
   useEffect(() => {
     async function init() {
       const [subsResult, dismissedResult] = await Promise.all([
@@ -86,21 +84,18 @@ export default function FeedClient() {
   }
 
   async function dismissPost(postId: string) {
+    // Update UI immediately (optimistic)
+    setDismissedIds((prev) => new Set([...prev, postId]));
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+
+    // Persist in background
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
-
-    await supabase.from("dismissed_posts").insert({
+    supabase.from("dismissed_posts").insert({
       username: USERNAME,
       post_id: postId,
       expires_at: expiresAt.toISOString(),
     });
-
-    setDismissedIds((prev) => new Set([...Array.from(prev), postId]));
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-  }
-
-  function toggleExpand(postId: string) {
-    setExpandedPostId((prev) => (prev === postId ? null : postId));
   }
 
   if (!ready) {
@@ -143,8 +138,6 @@ export default function FeedClient() {
               key={post.id}
               post={post}
               onDismiss={dismissPost}
-              isExpanded={expandedPostId === post.id}
-              onToggleExpand={toggleExpand}
             />
           ))}
         </div>
