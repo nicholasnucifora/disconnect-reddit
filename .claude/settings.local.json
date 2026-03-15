@@ -8,7 +8,8 @@
       "Bash(cd \"C:/Users/Nebula PC/Development/disconnect-reddit\" && npx tsc --noEmit 2>&1 | head -60)",
       "Bash(cd \"C:/Users/Nebula PC/Development/disconnect-reddit\" && node -e \"const pkg = require\\('./node_modules/@supabase/ssr/package.json'\\); console.log\\(pkg.version\\)\")",
       "Bash(cd \"C:/Users/Nebula PC/Development/disconnect-reddit\" && npx tsc --noEmit 2>&1)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(cd:*)"
     ]
   }
 }

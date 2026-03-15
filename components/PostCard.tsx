@@ -82,14 +82,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           </div>
 
           {/* Title */}
-          <h2 className="text-base font-semibold text-gray-100 leading-snug mb-2">
+          <h2 className="text-lg font-semibold text-gray-100 leading-snug mb-2">
             <Link href={detailUrl} onClick={saveAndNavigate} className="hover:text-indigo-300 transition-colors">
               {post.title}
             </Link>
           </h2>
 
           {/* Meta row */}
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
             <span>by u/{post.author}</span>
             <span aria-label={`${post.score} points`}>▲ {formatScore(post.score)}</span>
             <span>{timeAgo(post.createdUtc)}</span>
