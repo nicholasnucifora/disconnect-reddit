@@ -44,7 +44,15 @@ export interface CommentTree {
   comments: CommentOrMore[];
 }
 
-const USER_AGENT = "disconnect-reddit/0.1.0 (by disconnect-app)";
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0";
+
+const BROWSER_HEADERS = {
+  "User-Agent": USER_AGENT,
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "en-US,en;q=0.5",
+  "Accept-Encoding": "gzip, deflate, br",
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapPost(child: any): RedditPost {
@@ -122,7 +130,7 @@ export async function fetchSubredditPosts(
   const url = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=${limit}`;
 
   const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT },
+    headers: BROWSER_HEADERS,
   });
 
   if (!res.ok) {
@@ -144,7 +152,7 @@ export async function fetchPostComments(
   const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}/${slug}.json?limit=200`;
 
   const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT },
+    headers: BROWSER_HEADERS,
   });
 
   if (!res.ok) {
@@ -175,7 +183,7 @@ export async function fetchMoreComments(
   const url = `https://www.reddit.com/r/${subreddit}/comments/${postId}/comment/${commentId}.json`;
 
   const res = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT },
+    headers: BROWSER_HEADERS,
   });
 
   if (!res.ok) {
