@@ -14,6 +14,7 @@ export default function FeedClient() {
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [ready, setReady] = useState(false);
+  const [fetchErrors, setFetchErrors] = useState<string[]>([]);
 
   const supabase = createClient();
 
@@ -54,9 +55,10 @@ export default function FeedClient() {
       if (!res.ok) throw new Error("Failed to fetch posts");
       const json = await res.json();
       const fetched: RedditPost[] = json.posts ?? [];
+      setFetchErrors(json.errors ?? []);
       setPosts(fetched.filter((p) => !dismissedIds.has(p.id)));
-    } catch {
-      // keep existing posts on error
+    } catch (e) {
+      setFetchErrors([e instanceof Error ? e.message : "Unknown error"]);
     } finally {
       setLoading(false);
     }
@@ -125,9 +127,14 @@ export default function FeedClient() {
           Add a subreddit to get started
         </p>
       ) : posts.length === 0 ? (
-        <p className="text-center text-gray-500 py-16 text-sm">
-          No posts found
-        </p>
+        <div className="py-16 space-y-2">
+          <p className="text-center text-gray-500 text-sm">No posts found</p>
+          {fetchErrors.length > 0 && (
+            <div className="text-xs text-red-400 bg-red-950/40 rounded p-3 space-y-1">
+              {fetchErrors.map((e, i) => <p key={i}>{e}</p>)}
+            </div>
+          )}
+        </div>
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
