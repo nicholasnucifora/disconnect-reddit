@@ -156,7 +156,7 @@ export async function fetchSubredditPosts(
   _sort: "hot" | "top" | "new" = "hot",
   limit = 25
 ): Promise<RedditPost[]> {
-  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}&sort=desc`;
+  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}&sort=desc&sort_type=created_utc`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
