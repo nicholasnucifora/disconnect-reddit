@@ -44,11 +44,9 @@ export interface CommentTree {
   comments: CommentOrMore[];
 }
 
-const USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0";
-
 const BROWSER_HEADERS = {
-  "User-Agent": USER_AGENT,
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
   Accept: "application/json, text/plain, */*",
   "Accept-Language": "en-US,en;q=0.5",
   "Accept-Encoding": "gzip, deflate, br",
@@ -120,18 +118,48 @@ function mapComment(child: any, depth = 0): CommentOrMore {
   } satisfies RedditComment;
 }
 
-// Called client-side so the request comes from the user's browser IP, not Vercel's servers.
-// Reddit's .json endpoints allow browser CORS requests — no API key needed.
+// Pullpush returns posts as flat objects (no {kind, data} wrapper like Reddit's native API)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapPullpushPost(d: any): RedditPost {
+  return {
+    id: d.id,
+    title: d.title,
+    author: d.author ?? "[deleted]",
+    subreddit: d.subreddit,
+    score: d.score ?? 0,
+    numComments: d.num_comments ?? 0,
+    url: d.url ?? "",
+    permalink: d.permalink ?? "",
+    thumbnail:
+      d.thumbnail &&
+      d.thumbnail !== "self" &&
+      d.thumbnail !== "default" &&
+      d.thumbnail !== "nsfw" &&
+      d.thumbnail !== "spoiler" &&
+      d.thumbnail.startsWith("http")
+        ? d.thumbnail
+        : null,
+    selftext: d.selftext ?? "",
+    isVideo: d.is_video ?? false,
+    isSelf: d.is_self ?? false,
+    createdUtc: d.created_utc ?? 0,
+    flair: d.link_flair_text ?? null,
+    domain: d.domain ?? "",
+    stickied: d.stickied ?? false,
+  };
+}
+
+// Uses Pullpush.io (free Pushshift alternative) — works from Vercel servers, no auth needed.
+// Returns top-scoring posts from the last 48h instead of Reddit's "hot" algorithm.
 export async function fetchSubredditPosts(
   subreddit: string,
-  sort: "hot" | "top" | "new" = "hot",
+  _sort: "hot" | "top" | "new" = "hot",
   limit = 25
 ): Promise<RedditPost[]> {
-  const url = `https://www.reddit.com/r/${subreddit}/${sort}.json?limit=${limit}`;
+  const after = Math.floor(Date.now() / 1000) - 48 * 3600;
+  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}&sort=desc&sort_type=score&after=${after}`;
 
-  const res = await fetch(url, {
-    headers: BROWSER_HEADERS,
-  });
+  const res = await fetch(url, { headers: BROWSER_HEADERS });
 
   if (!res.ok) {
     throw new Error(
@@ -140,8 +168,8 @@ export async function fetchSubredditPosts(
   }
 
   const json = await res.json();
-  const children: unknown[] = json?.data?.children ?? [];
-  return children.map(mapPost);
+  const posts: unknown[] = json?.data ?? [];
+  return posts.map(mapPullpushPost);
 }
 
 export async function fetchPostComments(

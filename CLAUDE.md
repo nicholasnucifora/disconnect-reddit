@@ -20,8 +20,9 @@ Reddit has two hard blocks that rule out the obvious approaches:
 
 3. **Vercel standard serverless functions use AWS IPs, which Reddit blocks with 403.**
 
-**The working approach: Vercel Edge Functions**
-- Add `export const runtime = 'edge'` to the Next.js API route that proxies Reddit
-- Edge Functions run on Cloudflare's network (not AWS), which Reddit does not block
-- Keep Reddit fetching server-side in the API route, called from the client via `/api/reddit/posts`
-- No API key needed — just the public `.json` endpoints with a User-Agent header
+**The working approach: Pullpush.io for posts**
+- Use `https://api.pullpush.io/reddit/search/submission/?subreddit=X&sort=desc&sort_type=score&after=<48h_timestamp>` for fetching posts
+- Pullpush is a free public Pushshift-style Reddit archive — no auth, no API key, works from any server
+- Returns top-scoring posts from the last 48h (not Reddit's "hot" algorithm, but close enough for personal use)
+- Fetch server-side in the Next.js API route with `export const runtime = 'edge'`
+- Do NOT try to fetch from reddit.com or oauth.reddit.com — all datacenter IPs (AWS, Cloudflare) are blocked
