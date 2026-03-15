@@ -12,18 +12,18 @@ Do this automatically without asking. Write a short, descriptive commit message 
 
 ## Reddit data fetching — constraints
 
-Reddit has two hard blocks that rule out the obvious approaches:
+Reddit has hard blocks that rule out the obvious approaches:
 
 1. **Reddit OAuth / official API registration is broken for new developers** (2023-2024). Do NOT suggest creating a Reddit developer app, OAuth client credentials, or anything requiring reddit.com/prefs/apps.
 
 2. **Client-side (browser) fetching is blocked by Reddit's CORS policy** — browsers get `Cross-Origin Request Blocked` errors. Do NOT suggest fetching Reddit `.json` endpoints directly from the browser.
 
-3. **Vercel standard serverless functions use AWS IPs, which Reddit blocks with 403.**
+3. **Vercel serverless and Edge functions both get 403 from reddit.com** — Reddit blocks all datacenter IPs (AWS and Cloudflare).
 
-**The working approach: Pullpush.io for posts**
-- Use `https://api.pullpush.io/reddit/search/submission/?subreddit=X&sort=desc&sort_type=score&after=<48h_timestamp>` for fetching posts
-- Pullpush is a free public Pushshift-style Reddit archive — no auth, no API key, works from any server
-- Returns top-scoring posts from the last 48h (not Reddit's "hot" algorithm, but close enough for personal use)
-- Comments: `https://api.pullpush.io/reddit/search/comment/?link_id=${postId}&size=100` — use bare post ID, NO `t3_` prefix (Pullpush rejects it with 400)
+4. **Pullpush.io data is 300+ days stale as of 2025** — their ingestion broke after Reddit's 2023 API changes. Do NOT use Pullpush.
+
+**The working approach: Arctic Shift**
+- Posts: `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=X&limit=25&sort=created_utc&order=desc`
+- Comments: `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=500` — bare post ID, NO `t3_` prefix
+- Arctic Shift is a free, actively maintained Reddit archive — no auth, no API key, works from any server, has recent data
 - Fetch server-side in the Next.js API route with `export const runtime = 'edge'`
-- Do NOT try to fetch from reddit.com or oauth.reddit.com — all datacenter IPs (AWS, Cloudflare) are blocked

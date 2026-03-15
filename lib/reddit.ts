@@ -149,29 +149,30 @@ function mapPullpushPost(d: any): RedditPost {
   };
 }
 
-// Uses Pullpush.io (free Pushshift alternative) — works from Vercel servers, no auth needed.
-// sort=desc gives newest posts first.
+// Uses Arctic Shift (arctic-shift.photon-reddit.com) — actively maintained Reddit archive,
+// works from Vercel servers, no auth needed, has recent data.
 export async function fetchSubredditPosts(
   subreddit: string,
   _sort: "hot" | "top" | "new" = "hot",
   limit = 25
 ): Promise<RedditPost[]> {
-  const url = `https://api.pullpush.io/reddit/search/submission/?subreddit=${subreddit}&size=${limit}&sort=desc&sort_type=created_utc`;
+  const url = `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=${subreddit}&limit=${limit}&sort=created_utc&order=desc`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
   if (!res.ok) {
+    const body = await res.text().catch(() => "");
     throw new Error(
-      `Failed to fetch posts for r/${subreddit}: ${res.status} ${res.statusText}`
+      `Failed to fetch posts for r/${subreddit}: ${res.status} ${res.statusText} — ${body}`
     );
   }
 
   const json = await res.json();
-  const posts: unknown[] = json?.data ?? json?.results ?? [];
+  const posts: unknown[] = json?.data ?? [];
 
   if (posts.length === 0) {
     throw new Error(
-      `r/${subreddit}: Pullpush returned 0 posts (raw keys: ${Object.keys(json ?? {}).join(", ")})`
+      `r/${subreddit}: Arctic Shift returned 0 posts (keys: ${Object.keys(json ?? {}).join(", ")})`
     );
   }
 
@@ -183,7 +184,7 @@ export async function fetchPostComments(
   postId: string,
   _slug: string
 ): Promise<CommentTree> {
-  const url = `https://api.pullpush.io/reddit/search/comment/?link_id=${postId}&size=100`;
+  const url = `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=500`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
