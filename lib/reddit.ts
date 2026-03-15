@@ -183,13 +183,14 @@ export async function fetchPostComments(
   postId: string,
   _slug: string
 ): Promise<CommentTree> {
-  const url = `https://api.pullpush.io/reddit/search/comment/?link_id=t3_${postId}&size=500`;
+  const url = `https://api.pullpush.io/reddit/search/comment/?link_id=t3_${postId}&size=100`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
   if (!res.ok) {
+    const body = await res.text().catch(() => "");
     throw new Error(
-      `Failed to fetch comments for post ${postId}: ${res.status} ${res.statusText}`
+      `Failed to fetch comments for post ${postId}: ${res.status} ${res.statusText} — ${body}`
     );
   }
 
