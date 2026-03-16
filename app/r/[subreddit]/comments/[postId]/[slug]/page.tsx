@@ -177,8 +177,17 @@ export default function PostPage() {
                 {post.numComments} Comment{post.numComments !== 1 ? "s" : ""}
               </h2>
               {loading ? (
-                <div className="flex items-center justify-center py-8">
-                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                <div className="space-y-4">
+                  {[80, 60, 90, 50, 70].map((w, i) => (
+                    <div key={i} className="flex gap-3 animate-pulse">
+                      <div className="w-0.5 bg-gray-800 rounded-full flex-shrink-0 self-stretch" />
+                      <div className="flex-1 space-y-2 py-1">
+                        <div className="h-3 bg-gray-800 rounded w-24" />
+                        <div className={`h-3 bg-gray-800 rounded`} style={{ width: `${w}%` }} />
+                        <div className="h-3 bg-gray-800 rounded w-3/4" />
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : comments.length === 0 ? (
                 <p className="text-gray-500 text-sm">No comments found.</p>

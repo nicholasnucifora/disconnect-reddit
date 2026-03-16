@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import Link from "next/link";
+import { useEffect, useState } from "react";
 import { RedditPost } from "@/lib/reddit";
 
 function timeAgo(utcSeconds: number): string {
@@ -31,8 +31,13 @@ interface PostCardProps {
 
 export default function PostCard({ post, onDismiss }: PostCardProps) {
   const router = useRouter();
+  const [clicked, setClicked] = useState(false);
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
+
+  useEffect(() => {
+    router.prefetch(detailUrl);
+  }, [router, detailUrl]);
   const imageUrl = getImageUrl(post);
   const redditUrl = post.permalink
     ? `https://www.reddit.com${post.permalink}`
@@ -40,13 +45,13 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   function navigateToPost(e: React.MouseEvent) {
     e.preventDefault();
-    // Save post data for the detail page
+    if (clicked) return;
+    setClicked(true);
     try {
       sessionStorage.setItem(`post:${post.id}`, JSON.stringify(post));
     } catch {
       // sessionStorage unavailable
     }
-    // Navigate first — dismiss after navigation so the feed doesn't re-render while still visible
     router.push(detailUrl);
     setTimeout(() => onDismiss(post.id), 800);
   }
@@ -54,7 +59,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const imageUrl2 = imageUrl; // alias for thumbnail link
 
   return (
-    <article className="bg-gray-900 rounded-lg p-4 border border-gray-800 relative">
+    <article className={`bg-gray-900 rounded-lg p-4 border border-gray-800 relative transition-opacity duration-150 ${clicked ? "opacity-50" : ""}`}>
       {/* Dismiss button */}
       <button
         onClick={() => onDismiss(post.id)}
