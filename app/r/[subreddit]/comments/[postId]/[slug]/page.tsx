@@ -80,7 +80,7 @@ export default function PostPage() {
           ← Back
         </button>
 
-        {loading && (
+        {!post && loading && (
           <div className="flex items-center justify-center py-16">
             <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
           </div>
@@ -90,7 +90,7 @@ export default function PostPage() {
           <p className="text-red-400 text-sm py-8 text-center">{error}</p>
         )}
 
-        {!loading && !error && post && (
+        {post && (
           <>
             {/* Post */}
             <article className="bg-gray-900 rounded-lg border border-gray-800 p-5 mb-6">
@@ -176,7 +176,11 @@ export default function PostPage() {
               <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">
                 {post.numComments} Comment{post.numComments !== 1 ? "s" : ""}
               </h2>
-              {comments.length === 0 ? (
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+                </div>
+              ) : comments.length === 0 ? (
                 <p className="text-gray-500 text-sm">No comments found.</p>
               ) : (
                 <div className="space-y-4">

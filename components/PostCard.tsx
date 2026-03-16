@@ -46,9 +46,9 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     } catch {
       // sessionStorage unavailable
     }
-    // Navigate first — dismiss after so there's no visible flicker on the feed
+    // Navigate first — dismiss after navigation so the feed doesn't re-render while still visible
     router.push(detailUrl);
-    setTimeout(() => onDismiss(post.id), 150);
+    setTimeout(() => onDismiss(post.id), 800);
   }
 
   const imageUrl2 = imageUrl; // alias for thumbnail link
