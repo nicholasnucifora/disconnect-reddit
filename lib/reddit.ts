@@ -149,7 +149,7 @@ export async function fetchPostComments(
   // Fetch post data and comments in parallel
   const [postRes, commentsRes] = await Promise.all([
     fetch(
-      `https://arctic-shift.photon-reddit.com/api/posts/search?ids=${postId}`,
+      `https://arctic-shift.photon-reddit.com/api/posts/search?ids=t3_${postId}`,
       { headers: BROWSER_HEADERS }
     ),
     fetch(

@@ -58,7 +58,9 @@ export default function PostPage() {
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
         const data = await res.json();
-        setPost(data.post);
+        // Only replace the cached post if we got real data back — guards against
+        // the stub post (empty title, createdUtc=0) overwriting sessionStorage cache
+        if (data.post?.title) setPost(data.post);
         setComments(data.comments ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
