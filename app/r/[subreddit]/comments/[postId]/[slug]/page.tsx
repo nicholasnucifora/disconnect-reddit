@@ -34,11 +34,12 @@ export default function PostPage() {
   const postId = params.postId as string;
   const slug = params.slug as string;
 
-  // Seed post from sessionStorage immediately so metadata shows before API responds
+  // Seed post from localStorage immediately so metadata shows before API responds
+  // (localStorage is shared across tabs, so middle-click works too)
   const [post, setPost] = useState<RedditPost | null>(() => {
     if (typeof window === "undefined") return null;
     try {
-      const cached = sessionStorage.getItem(`post:${postId}`);
+      const cached = localStorage.getItem(`post:${postId}`);
       return cached ? JSON.parse(cached) : null;
     } catch {
       return null;
@@ -47,7 +48,6 @@ export default function PostPage() {
   const [comments, setComments] = useState<CommentOrMore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -126,14 +126,13 @@ export default function PostPage() {
               </div>
 
               {/* Image */}
-              {post.url && isImageUrl(post.url, post.domain) && !imageError && (
+              {post.url && isImageUrl(post.url, post.domain) && (
                 <a href={post.url} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={post.url}
                     alt={post.title}
                     className="w-full rounded-lg object-contain max-h-[600px] bg-gray-800 mb-4"
-                    onError={() => setImageError(true)}
                   />
                 </a>
               )}
