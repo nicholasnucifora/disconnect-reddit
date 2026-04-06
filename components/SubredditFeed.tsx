@@ -29,7 +29,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
 
   return (
     <main className="min-h-screen bg-gray-950">
-      <div className="max-w-3xl mx-auto px-4 py-8">
+      <div className="max-w-4xl mx-auto px-4 py-8">
         <h1 className="text-xl font-bold text-teal-400 mb-6">r/{subreddit}</h1>
 
         {loading && (
