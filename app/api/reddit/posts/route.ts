@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const results = await Promise.allSettled(
-      subreddits.map((sub) => fetchSubredditPosts(sub, sort, 25))
+      subreddits.map((sub) => fetchSubredditPosts(sub, sort, 100))
     );
 
     const posts: RedditPost[] = [];
@@ -43,9 +43,13 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Filter out stickied, deleted, and removed posts; sort by score descending
+    // Keep only posts from the last 3 days
+    const threeDaysAgo = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
+
+    // Filter out stickied, deleted, removed, and old posts; sort by score descending
     const merged = posts
       .filter((p) => !p.stickied)
+      .filter((p) => p.createdUtc >= threeDaysAgo)
       .filter(
         (p) =>
           p.author !== "[deleted]" &&
