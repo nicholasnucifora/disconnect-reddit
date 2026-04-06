@@ -5,10 +5,13 @@ import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 import { RedditPost } from "@/lib/reddit";
 import { useSubreddits } from "@/lib/subreddits-context";
+import { useFeeds } from "@/lib/feeds-context";
 import PostCard from "./PostCard";
 
 export default function FeedClient() {
   const { subreddits, ready: subredditsReady } = useSubreddits();
+  const { getActiveFeedSubreddits } = useFeeds();
+  const activeSubs = getActiveFeedSubreddits(subreddits);
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
@@ -41,7 +44,7 @@ export default function FeedClient() {
   const ready = subredditsReady && dismissedReady;
 
   const fetchPosts = useCallback(async () => {
-    if (subreddits.length === 0) {
+    if (activeSubs.length === 0) {
       setPosts([]);
       return;
     }
@@ -49,7 +52,7 @@ export default function FeedClient() {
     setLoading(true);
     setFetchErrors([]);
     try {
-      const res = await fetch(`/api/reddit/posts?subreddits=${subreddits.join(",")}&sort=hot`);
+      const res = await fetch(`/api/reddit/posts?subreddits=${activeSubs.join(",")}&sort=hot`);
       if (!res.ok) throw new Error("Failed to fetch posts");
       const json = await res.json();
       const fetched: RedditPost[] = json.posts ?? [];
@@ -60,7 +63,7 @@ export default function FeedClient() {
     } finally {
       setLoading(false);
     }
-  }, [subreddits, dismissedIds]);
+  }, [activeSubs, dismissedIds]);
 
   useEffect(() => {
     if (ready) fetchPosts();
@@ -117,9 +120,11 @@ export default function FeedClient() {
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : subreddits.length === 0 ? (
+      ) : activeSubs.length === 0 ? (
         <p className="text-center text-gray-500 py-16 text-sm">
-          Add a subreddit in the sidebar to get started
+          {subreddits.length === 0
+            ? "Add a subreddit in the sidebar to get started"
+            : "No subreddits in this feed — drag some over from another feed"}
         </p>
       ) : posts.length === 0 ? (
         <div className="py-16 space-y-2">
