@@ -43,9 +43,17 @@ export async function GET(request: NextRequest) {
       }
     });
 
-    // Filter out stickied posts and sort by score descending
+    // Filter out stickied, deleted, and removed posts; sort by score descending
     const merged = posts
       .filter((p) => !p.stickied)
+      .filter(
+        (p) =>
+          p.author !== "[deleted]" &&
+          p.selftext !== "[deleted]" &&
+          p.selftext !== "[removed]" &&
+          p.title !== "[deleted]" &&
+          p.title !== "[removed]"
+      )
       .sort((a, b) => b.score - a.score);
 
     return NextResponse.json(

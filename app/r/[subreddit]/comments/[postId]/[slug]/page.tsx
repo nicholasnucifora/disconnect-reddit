@@ -47,6 +47,7 @@ export default function PostPage() {
   const [comments, setComments] = useState<CommentOrMore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
 
   useEffect(() => {
     async function load() {
@@ -59,9 +60,9 @@ export default function PostPage() {
           throw new Error(body.error ?? `HTTP ${res.status}`);
         }
         const data = await res.json();
-        // Only replace the cached post if we got real data back — guards against
-        // the stub post (empty title, createdUtc=0) overwriting sessionStorage cache
-        if (data.post?.title) setPost(data.post);
+        // Replace cached post if API returned real data, or if there was no cached
+        // post (e.g. middle-click in new tab where sessionStorage is empty).
+        if (data.post?.title || !post) setPost(data.post ?? post);
         setComments(data.comments ?? []);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
@@ -111,7 +112,7 @@ export default function PostPage() {
 
               {/* Title */}
               <h1 className="text-xl font-bold text-gray-100 leading-snug mb-3">
-                {post.title}
+                {post.title || slug.replace(/-/g, " ") || "Post"}
               </h1>
 
               {/* Meta */}
@@ -125,13 +126,14 @@ export default function PostPage() {
               </div>
 
               {/* Image */}
-              {post.url && isImageUrl(post.url, post.domain) && (
+              {post.url && isImageUrl(post.url, post.domain) && !imageError && (
                 <a href={post.url} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={post.url}
                     alt={post.title}
                     className="w-full rounded-lg object-contain max-h-[600px] bg-gray-800 mb-4"
+                    onError={() => setImageError(true)}
                   />
                 </a>
               )}

@@ -34,6 +34,8 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const router = useRouter();
   const [clicked, setClicked] = useState(false);
   const [imgIndex, setImgIndex] = useState(0);
+  const [thumbnailError, setThumbnailError] = useState(false);
+  const [mediaError, setMediaError] = useState(false);
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
   const redditUrl = post.permalink
@@ -134,20 +136,21 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           </div>
 
           {/* Small thumbnail — link posts only */}
-          {hasThumbnail && (
+          {hasThumbnail && !thumbnailError && (
             <a href={detailUrl} onClick={navigateToPost} className="flex-shrink-0 mt-0.5">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={post.thumbnail!}
                 alt=""
                 className="w-20 h-16 object-cover rounded bg-gray-800"
+                onError={() => setThumbnailError(true)}
               />
             </a>
           )}
         </div>
 
         {/* Full-width image / gallery carousel */}
-        {showLargeMedia && images.length > 0 && (
+        {showLargeMedia && images.length > 0 && !mediaError && (
           <div className="mt-3 relative rounded-lg overflow-hidden bg-gray-800 select-none">
             <a href={detailUrl} onClick={navigateToPost} className="block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -155,6 +158,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                 src={images[imgIndex]}
                 alt={post.title}
                 className="w-full max-h-[520px] object-contain"
+                onError={() => setMediaError(true)}
               />
             </a>
 
