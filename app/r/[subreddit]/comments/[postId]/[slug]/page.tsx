@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { RedditPost, CommentOrMore } from "@/lib/reddit";
 import Comment from "@/components/Comment";
+import RedditMarkdown from "@/components/RedditMarkdown";
 
 function timeAgo(utcSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - utcSeconds;
@@ -137,9 +138,15 @@ export default function PostPage() {
 
               {/* Self text */}
               {post.selftext && (
-                <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed mb-4 border-t border-gray-800 pt-4">
-                  {post.selftext}
-                </p>
+                <div className="border-t border-gray-800 pt-4 mb-4">
+                  <RedditMarkdown className="text-sm text-gray-300 leading-relaxed prose prose-invert prose-sm max-w-none
+                    prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
+                    prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
+                    prose-strong:text-gray-100 prose-em:text-gray-300
+                    prose-table:text-gray-300 prose-th:text-gray-200 prose-td:text-gray-300">
+                    {post.selftext}
+                  </RedditMarkdown>
+                </div>
               )}
 
               {/* External link (non-image, non-self) */}

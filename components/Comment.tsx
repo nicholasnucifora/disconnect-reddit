@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { CommentOrMore, RedditComment, RedditMoreComments } from "@/lib/reddit";
 import { usernameColor } from "@/lib/utils";
+import RedditMarkdown from "@/components/RedditMarkdown";
 
 function timeAgo(utcSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - utcSeconds;
@@ -143,29 +142,13 @@ function RegularComment({
 
         {!collapsed && (
           <>
-            <div className="text-base text-gray-200 leading-relaxed prose prose-invert prose-sm max-w-none
+            <RedditMarkdown className="text-base text-gray-200 leading-relaxed prose prose-invert prose-sm max-w-none
               prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
-              prose-code:text-amber-300 prose-code:bg-gray-800 prose-code:px-1 prose-code:rounded
               prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
               prose-strong:text-gray-100 prose-em:text-gray-300
               mb-2">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  a: ({ href, children }) => (
-                    <a href={href} target="_blank" rel="noopener noreferrer">
-                      {children}
-                    </a>
-                  ),
-                  // Prevent h1/h2 from being huge inside comments
-                  h1: ({ children }) => <p className="font-bold">{children}</p>,
-                  h2: ({ children }) => <p className="font-bold">{children}</p>,
-                  h3: ({ children }) => <p className="font-semibold">{children}</p>,
-                }}
-              >
-                {comment.body}
-              </ReactMarkdown>
-            </div>
+              {comment.body}
+            </RedditMarkdown>
 
             {replies.length > 0 && (
               <div className="mt-3 space-y-3">
