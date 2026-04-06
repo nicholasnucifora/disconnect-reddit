@@ -87,30 +87,30 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
         <button
           onClick={() => onDismiss(post.id)}
           aria-label="Dismiss post"
-          className="absolute top-4 right-4 text-gray-500 hover:text-gray-200 transition-colors text-xl leading-none z-10"
+          className="absolute top-5 right-5 text-gray-500 hover:text-gray-200 transition-colors text-xl leading-none z-10"
         >
           ✕
         </button>
       )}
 
-      <div className="p-6">
+      <div className="p-7">
         {/* Header: text content + optional small link thumbnail */}
-        <div className="flex items-start gap-4">
-          <div className="flex-1 min-w-0 pr-8">
+        <div className="flex items-start gap-5">
+          <div className="flex-1 min-w-0 pr-10">
             {/* Subreddit + flair */}
-            <div className="mb-1.5">
-              <span className="text-sm font-semibold text-indigo-400 uppercase tracking-wide">
+            <div className="mb-2">
+              <span className="text-base font-semibold text-indigo-400 uppercase tracking-wide">
                 r/{post.subreddit}
               </span>
               {post.flair && (
-                <span className="ml-2 text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+                <span className="ml-2 text-sm text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
                   {post.flair}
                 </span>
               )}
             </div>
 
             {/* Title */}
-            <h2 className="text-xl font-semibold text-gray-100 leading-snug mb-3">
+            <h2 className="text-2xl font-semibold text-gray-100 leading-snug mb-3">
               <a
                 href={detailUrl}
                 onClick={navigateToPost}
@@ -121,7 +121,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             </h2>
 
             {/* Meta */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base text-gray-500">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-lg text-gray-500">
               <span>by u/{post.author}</span>
               <span aria-label={`${post.score} points`}>▲ {formatScore(post.score)}</span>
               <span>{timeAgo(post.createdUtc)}</span>
@@ -138,7 +138,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
               <img
                 src={post.thumbnail!}
                 alt=""
-                className="w-28 h-20 object-cover rounded bg-gray-800"
+                className="w-36 h-24 object-cover rounded bg-gray-800"
               />
             </a>
           )}
@@ -146,13 +146,13 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
         {/* Full-width image / gallery carousel */}
         {showLargeMedia && images.length > 0 && (
-          <div className="mt-4 relative rounded-lg overflow-hidden bg-gray-800 select-none">
+          <div className="mt-5 relative rounded-lg overflow-hidden bg-gray-800 select-none">
             <a href={detailUrl} onClick={navigateToPost} className="block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={images[imgIndex]}
                 alt={post.title}
-                className="w-full max-h-[680px] object-contain"
+                className="w-full max-h-[800px] object-contain"
               />
             </a>
 
@@ -160,22 +160,22 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
               <>
                 <button
                   onClick={prevImg}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/80 text-white rounded-full w-11 h-11 flex items-center justify-center text-2xl transition-colors z-10"
+                  className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/80 text-white rounded-full w-12 h-12 flex items-center justify-center text-3xl transition-colors z-10"
                   aria-label="Previous image"
                 >
                   ‹
                 </button>
                 <button
                   onClick={nextImg}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/80 text-white rounded-full w-11 h-11 flex items-center justify-center text-2xl transition-colors z-10"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/80 text-white rounded-full w-12 h-12 flex items-center justify-center text-3xl transition-colors z-10"
                   aria-label="Next image"
                 >
                   ›
                 </button>
-                <div className="absolute top-2 right-2 bg-black/60 text-white text-sm px-2.5 py-1 rounded-full">
+                <div className="absolute top-3 right-3 bg-black/60 text-white text-sm px-3 py-1 rounded-full">
                   {imgIndex + 1} / {images.length}
                 </div>
-                <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
                   {images.map((_, i) => (
                     <button
                       key={i}
@@ -183,7 +183,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                         e.stopPropagation();
                         setImgIndex(i);
                       }}
-                      className={`w-2 h-2 rounded-full transition-colors ${
+                      className={`w-2.5 h-2.5 rounded-full transition-colors ${
                         i === imgIndex ? "bg-white" : "bg-white/35"
                       }`}
                       aria-label={`Go to image ${i + 1}`}
@@ -196,11 +196,11 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
         )}
 
         {/* Actions */}
-        <div className="mt-4 flex items-center gap-4">
+        <div className="mt-5 flex items-center gap-5">
           <a
             href={detailUrl}
             onClick={navigateToPost}
-            className="text-sm text-gray-400 hover:text-indigo-300 transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="text-base text-gray-400 hover:text-indigo-300 transition-colors flex items-center gap-2 cursor-pointer"
           >
             <span>💬</span>
             <span>
@@ -211,7 +211,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             href={redditUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
+            className="text-base text-gray-500 hover:text-gray-300 transition-colors"
           >
             Open on Reddit ↗
           </a>

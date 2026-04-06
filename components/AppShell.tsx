@@ -29,7 +29,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar open={sidebarOpen} />
 
       {/* Main content — full width on mobile, offset by sidebar on desktop */}
-      <div className="md:pl-52 pt-12">{children}</div>
+      <div className="md:pl-52 pt-16">{children}</div>
     </>
   );
 }
