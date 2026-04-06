@@ -26,7 +26,7 @@ function getImageUrl(post: RedditPost): string | null {
 
 interface PostCardProps {
   post: RedditPost;
-  onDismiss: (id: string) => void;
+  onDismiss?: (id: string) => void;
 }
 
 export default function PostCard({ post, onDismiss }: PostCardProps) {
@@ -53,7 +53,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
       // sessionStorage unavailable
     }
     router.push(detailUrl);
-    setTimeout(() => onDismiss(post.id), 800);
+    if (onDismiss) setTimeout(() => onDismiss(post.id), 800);
   }
 
   const imageUrl2 = imageUrl; // alias for thumbnail link
@@ -61,13 +61,15 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   return (
     <article className={`bg-gray-900 rounded-lg p-4 border border-gray-800 relative transition-opacity duration-150 ${clicked ? "opacity-50" : ""}`}>
       {/* Dismiss button */}
-      <button
-        onClick={() => onDismiss(post.id)}
-        aria-label="Dismiss post"
-        className="absolute top-3 right-3 text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none z-10"
-      >
-        ✕
-      </button>
+      {onDismiss && (
+        <button
+          onClick={() => onDismiss(post.id)}
+          aria-label="Dismiss post"
+          className="absolute top-3 right-3 text-gray-500 hover:text-gray-200 transition-colors text-lg leading-none z-10"
+        >
+          ✕
+        </button>
+      )}
 
       <div className="flex gap-3">
         {/* Thumbnail */}

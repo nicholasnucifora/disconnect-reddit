@@ -4,51 +4,41 @@ import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 import { RedditPost } from "@/lib/reddit";
-import SubredditManager from "./SubredditManager";
+import { useSubreddits } from "@/lib/subreddits-context";
 import PostCard from "./PostCard";
 
 export default function FeedClient() {
-  const [subreddits, setSubreddits] = useState<string[]>([]);
+  const { subreddits, ready: subredditsReady } = useSubreddits();
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
-  const [ready, setReady] = useState(false);
+  const [dismissedReady, setDismissedReady] = useState(false);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
 
   const supabase = createClient();
 
   useEffect(() => {
     async function init() {
-      const [subsResult, dismissedResult] = await Promise.all([
-        supabase
-          .from("user_subreddits")
-          .select("subreddit")
-          .eq("username", USERNAME)
-          .order("added_at", { ascending: true }),
-        supabase
-          .from("dismissed_posts")
-          .select("post_id")
-          .eq("username", USERNAME)
-          .gt("expires_at", new Date().toISOString()),
-      ]);
+      const { data } = await supabase
+        .from("dismissed_posts")
+        .select("post_id")
+        .eq("username", USERNAME)
+        .gt("expires_at", new Date().toISOString());
 
-      // Merge Supabase dismissed IDs with sessionStorage local dismissed IDs.
-      // sessionStorage acts as an immediate cache for dismissals that may not have
-      // persisted to Supabase yet (e.g. user navigated home very quickly).
-      const supabaseIds = (dismissedResult.data ?? []).map((r: { post_id: string }) => r.post_id);
+      const supabaseIds = (data ?? []).map((r: { post_id: string }) => r.post_id);
       let localIds: string[] = [];
       try {
         localIds = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
       } catch { /* ignore */ }
 
-      setSubreddits((subsResult.data ?? []).map((r: { subreddit: string }) => r.subreddit));
       setDismissedIds(new Set([...supabaseIds, ...localIds]));
-      setReady(true);
+      setDismissedReady(true);
     }
-
     init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const ready = subredditsReady && dismissedReady;
 
   const fetchPosts = useCallback(async () => {
     if (subreddits.length === 0) {
@@ -76,29 +66,10 @@ export default function FeedClient() {
     if (ready) fetchPosts();
   }, [fetchPosts, ready]);
 
-  async function addSubreddit(name: string) {
-    const { error } = await supabase
-      .from("user_subreddits")
-      .insert({ username: USERNAME, subreddit: name });
-    if (!error) setSubreddits((prev) => [...prev, name]);
-  }
-
-  async function removeSubreddit(name: string) {
-    const { error } = await supabase
-      .from("user_subreddits")
-      .delete()
-      .eq("username", USERNAME)
-      .eq("subreddit", name);
-    if (!error) setSubreddits((prev) => prev.filter((s) => s !== name));
-  }
-
   async function dismissPost(postId: string) {
-    // Update UI immediately (optimistic)
     setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));
     setPosts((prev) => prev.filter((p) => p.id !== postId));
 
-    // Mirror to sessionStorage so the filter survives FeedClient remounts
-    // even if the Supabase insert hasn't completed yet
     try {
       const local = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
       if (!local.includes(postId)) {
@@ -107,7 +78,6 @@ export default function FeedClient() {
       }
     } catch { /* ignore */ }
 
-    // Persist to Supabase in background
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
     supabase.from("dismissed_posts").insert({
@@ -117,7 +87,6 @@ export default function FeedClient() {
     });
   }
 
-  // Listen for "Keep in feed" from the detail page to re-add a post
   useEffect(() => {
     function handleUndismiss(e: Event) {
       const post = (e as CustomEvent<RedditPost>).detail;
@@ -144,19 +113,13 @@ export default function FeedClient() {
 
   return (
     <div className="space-y-6">
-      <SubredditManager
-        subreddits={subreddits}
-        onAdd={addSubreddit}
-        onRemove={removeSubreddit}
-      />
-
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
         </div>
       ) : subreddits.length === 0 ? (
         <p className="text-center text-gray-500 py-16 text-sm">
-          Add a subreddit to get started
+          Add a subreddit in the sidebar to get started
         </p>
       ) : posts.length === 0 ? (
         <div className="py-16 space-y-2">
