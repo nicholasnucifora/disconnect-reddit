@@ -98,26 +98,26 @@ export default function PostPage() {
         {post && (
           <>
             {/* Post */}
-            <article className="bg-gray-900 rounded-lg border border-gray-800 p-5 mb-6">
+            <article className="bg-gray-900 rounded-lg border border-gray-800 p-7 mb-8">
               {/* Subreddit + flair */}
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-xs font-semibold text-indigo-400 uppercase tracking-wide">
+              <div className="flex items-center gap-2 mb-2.5">
+                <span className="text-sm font-semibold text-indigo-400 uppercase tracking-wide">
                   r/{post.subreddit}
                 </span>
                 {post.flair && (
-                  <span className="text-xs text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded">
+                  <span className="text-sm text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
                     {post.flair}
                   </span>
                 )}
               </div>
 
               {/* Title */}
-              <h1 className="text-xl font-bold text-gray-100 leading-snug mb-3">
+              <h1 className="text-3xl font-bold text-gray-100 leading-snug mb-4">
                 {post.title || slug.replace(/-/g, " ") || "Post"}
               </h1>
 
               {/* Meta */}
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500 mb-4">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 mb-5">
                 <span>by u/{post.author}</span>
                 <span>▲ {formatScore(post.score)}</span>
                 <span>{timeAgo(post.createdUtc)}</span>
@@ -133,7 +133,7 @@ export default function PostPage() {
                   <img
                     src={post.galleryImages[galleryIndex].url}
                     alt={`${post.title} (${galleryIndex + 1} of ${post.galleryImages.length})`}
-                    className="w-full max-h-[600px] object-contain"
+                    className="w-full max-h-[760px] object-contain"
                   />
                   {post.galleryImages.length > 1 && (
                     <>
@@ -162,15 +162,15 @@ export default function PostPage() {
                   <img
                     src={post.url}
                     alt={post.title}
-                    className="w-full rounded-lg object-contain max-h-[600px] bg-gray-800 mb-4"
+                    className="w-full rounded-lg object-contain max-h-[760px] bg-gray-800 mb-5"
                   />
                 </a>
               )}
 
               {/* Self text */}
               {post.selftext && (
-                <div className="border-t border-gray-800 pt-4 mb-4">
-                  <RedditMarkdown className="text-sm text-gray-300 leading-relaxed prose prose-invert prose-sm max-w-none
+                <div className="border-t border-gray-800 pt-5 mb-5">
+                  <RedditMarkdown className="text-base text-gray-300 leading-relaxed prose prose-invert max-w-none
                     prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
                     prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
                     prose-strong:text-gray-100 prose-em:text-gray-300
@@ -190,7 +190,7 @@ export default function PostPage() {
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 bg-gray-800 rounded-lg px-3 py-2.5 mb-4 transition-colors"
+                  className="flex items-center gap-2 text-base text-indigo-400 hover:text-indigo-300 bg-gray-800 rounded-lg px-4 py-3 mb-5 transition-colors"
                 >
                   <span className="flex-shrink-0">▶</span>
                   <span>Watch video on Reddit</span>
@@ -204,7 +204,7 @@ export default function PostPage() {
                   href={post.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 bg-gray-800 rounded-lg px-3 py-2.5 mb-4 truncate transition-colors"
+                  className="flex items-center gap-2 text-base text-indigo-400 hover:text-indigo-300 bg-gray-800 rounded-lg px-4 py-3 mb-5 truncate transition-colors"
                 >
                   <span className="flex-shrink-0">🔗</span>
                   <span className="truncate">{post.url}</span>
@@ -213,7 +213,7 @@ export default function PostPage() {
               )}
 
               {/* Open on Reddit */}
-              <div className="border-t border-gray-800 pt-3 mt-1">
+              <div className="border-t border-gray-800 pt-4 mt-1">
                 <a
                   href={
                     post.permalink
@@ -222,7 +222,7 @@ export default function PostPage() {
                   }
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                  className="text-sm text-gray-500 hover:text-gray-300 transition-colors"
                 >
                   Open on Reddit ↗
                 </a>
@@ -231,7 +231,7 @@ export default function PostPage() {
 
             {/* Comments */}
             <section>
-              <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">
+              <h2 className="text-base font-semibold text-gray-400 uppercase tracking-wide mb-5">
                 {post.numComments} Comment{post.numComments !== 1 ? "s" : ""}
               </h2>
               {loading ? (

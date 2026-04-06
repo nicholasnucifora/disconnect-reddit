@@ -70,12 +70,12 @@ function MoreStub({
   }
 
   return (
-    <div className="ml-4 pl-3 border-l border-gray-700">
-      {error && <p className="text-red-400 text-xs mb-1">{error}</p>}
+    <div className="ml-5 pl-4 border-l border-gray-700">
+      {error && <p className="text-red-400 text-sm mb-1">{error}</p>}
       <button
         onClick={loadMore}
         disabled={loading}
-        className="text-sm text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
+        className="text-base text-indigo-400 hover:text-indigo-300 disabled:opacity-50 transition-colors"
       >
         {loading ? "Loading…" : `Load ${stub.count > 0 ? stub.count : ""} more replies`}
       </button>
@@ -111,7 +111,7 @@ function RegularComment({
       {/* Clickable thread line for nested comments */}
       {comment.depth > 0 && (
         <div
-          className="flex-shrink-0 w-5 flex justify-center cursor-pointer group"
+          className="flex-shrink-0 w-6 flex justify-center cursor-pointer group"
           onClick={() => setCollapsed((c) => !c)}
           title={collapsed ? "Expand" : "Collapse"}
         >
@@ -122,19 +122,19 @@ function RegularComment({
       <div className="flex-1 min-w-0">
         {/* Header — click to collapse */}
         <div
-          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1.5 cursor-pointer select-none group"
+          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-2 cursor-pointer select-none group"
           onClick={() => setCollapsed((c) => !c)}
         >
-          <span className="font-mono text-gray-600 text-xs group-hover:text-gray-400 transition-colors">
+          <span className="font-mono text-gray-600 text-sm group-hover:text-gray-400 transition-colors">
             {collapsed ? "[+]" : "[-]"}
           </span>
-          <span className={`font-semibold text-sm ${nameColor}`}>
+          <span className={`font-semibold text-base ${nameColor}`}>
             u/{comment.author}
           </span>
-          <span className="text-xs text-gray-500">▲ {formatScore(comment.score)}</span>
-          <span className="text-xs text-gray-600">{timeAgo(comment.createdUtc)}</span>
+          <span className="text-sm text-gray-500">▲ {formatScore(comment.score)}</span>
+          <span className="text-sm text-gray-600">{timeAgo(comment.createdUtc)}</span>
           {collapsed && descendantCount > 0 && (
-            <span className="text-xs text-gray-600">
+            <span className="text-sm text-gray-600">
               ({descendantCount} {descendantCount === 1 ? "reply" : "replies"})
             </span>
           )}
@@ -142,16 +142,16 @@ function RegularComment({
 
         {!collapsed && (
           <>
-            <RedditMarkdown className="text-base text-gray-200 leading-relaxed prose prose-invert prose-sm max-w-none
+            <RedditMarkdown className="text-base text-gray-200 leading-relaxed prose prose-invert max-w-none
               prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
               prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
               prose-strong:text-gray-100 prose-em:text-gray-300
-              mb-2">
+              mb-3">
               {comment.body}
             </RedditMarkdown>
 
             {replies.length > 0 && (
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 space-y-4">
                 {replies.map((reply, i) =>
                   reply.isMore ? (
                     <MoreStub
