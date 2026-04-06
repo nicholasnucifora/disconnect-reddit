@@ -48,6 +48,7 @@ export default function PostPage() {
   const [comments, setComments] = useState<CommentOrMore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [galleryIndex, setGalleryIndex] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -125,8 +126,37 @@ export default function PostPage() {
                 )}
               </div>
 
-              {/* Image */}
-              {post.url && isImageUrl(post.url, post.domain) && (
+              {/* Gallery carousel */}
+              {post.isGallery && post.galleryImages.length > 0 && (
+                <div className="relative rounded-lg overflow-hidden bg-gray-800 mb-4 select-none">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={post.galleryImages[galleryIndex].url}
+                    alt={`${post.title} (${galleryIndex + 1} of ${post.galleryImages.length})`}
+                    className="w-full max-h-[600px] object-contain"
+                  />
+                  {post.galleryImages.length > 1 && (
+                    <>
+                      <button
+                        onClick={() => setGalleryIndex((i) => (i - 1 + post.galleryImages.length) % post.galleryImages.length)}
+                        className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/80 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl transition-colors"
+                        aria-label="Previous image"
+                      >‹</button>
+                      <button
+                        onClick={() => setGalleryIndex((i) => (i + 1) % post.galleryImages.length)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/55 hover:bg-black/80 text-white rounded-full w-9 h-9 flex items-center justify-center text-xl transition-colors"
+                        aria-label="Next image"
+                      >›</button>
+                      <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-0.5 rounded-full">
+                        {galleryIndex + 1} / {post.galleryImages.length}
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Single image */}
+              {!post.isGallery && post.url && isImageUrl(post.url, post.domain) && (
                 <a href={post.url} target="_blank" rel="noopener noreferrer">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -150,8 +180,8 @@ export default function PostPage() {
                 </div>
               )}
 
-              {/* External link (non-image, non-self) */}
-              {!post.isSelf && post.url && !isImageUrl(post.url, post.domain) && (
+              {/* External link (non-image, non-self, non-gallery) */}
+              {!post.isSelf && !post.isGallery && post.url && !isImageUrl(post.url, post.domain) && (
                 <a
                   href={post.url}
                   target="_blank"

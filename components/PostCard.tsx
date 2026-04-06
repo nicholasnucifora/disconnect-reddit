@@ -42,17 +42,19 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   useEffect(() => {
     router.prefetch(detailUrl);
-  }, [router, detailUrl]);
-
-  function navigateToPost(e: React.MouseEvent) {
-    e.preventDefault();
-    if (clicked) return;
-    setClicked(true);
+    // Write to localStorage on render so middle-click (new tab) can read it —
+    // onClick fires only for left-clicks; middle-click bypasses React handlers entirely.
     try {
       localStorage.setItem(`post:${post.id}`, JSON.stringify(post));
     } catch {
       // storage unavailable
     }
+  }, [router, detailUrl, post]);
+
+  function navigateToPost(e: React.MouseEvent) {
+    e.preventDefault();
+    if (clicked) return;
+    setClicked(true);
     router.push(detailUrl);
     if (onDismiss) setTimeout(() => onDismiss(post.id), 800);
   }
