@@ -23,7 +23,7 @@ Reddit has hard blocks that rule out the obvious approaches:
 4. **Pullpush.io data is 300+ days stale as of 2025** — their ingestion broke after Reddit's 2023 API changes. Do NOT use Pullpush.
 
 **The working approach: Arctic Shift**
-- Posts: `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=X&limit=25&sort=-created_utc` — minus prefix = descending, no `order` param (rejected with 400)
+- Posts: `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=X&limit=25&sort=desc` — `sort` only accepts `asc` or `desc` (field prefix like `-created_utc` is rejected with 400)
 - Comments: `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=500` — bare post ID, NO `t3_` prefix
 - Arctic Shift is a free, actively maintained Reddit archive — no auth, no API key, works from any server, has recent data
 - Fetch server-side in the Next.js API route with `export const runtime = 'edge'`
