@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 import { RedditPost } from "@/lib/reddit";
@@ -11,7 +11,10 @@ import PostCard from "./PostCard";
 export default function FeedClient() {
   const { subreddits, ready: subredditsReady } = useSubreddits();
   const { getActiveFeedSubreddits } = useFeeds();
-  const activeSubs = getActiveFeedSubreddits(subreddits);
+  const activeSubs = useMemo(
+    () => getActiveFeedSubreddits(subreddits),
+    [getActiveFeedSubreddits, subreddits]
+  );
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
