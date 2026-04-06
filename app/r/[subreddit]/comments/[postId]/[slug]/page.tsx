@@ -180,8 +180,26 @@ export default function PostPage() {
                 </div>
               )}
 
-              {/* External link (non-image, non-self, non-gallery) */}
-              {!post.isSelf && !post.isGallery && post.url && !isImageUrl(post.url, post.domain) && (
+              {/* Reddit-hosted video — v.redd.it links 404 outside Reddit's player */}
+              {post.isVideo && (
+                <a
+                  href={
+                    post.permalink
+                      ? `https://www.reddit.com${post.permalink}`
+                      : `https://www.reddit.com/r/${subreddit}/comments/${postId}/${slug}/`
+                  }
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm text-indigo-400 hover:text-indigo-300 bg-gray-800 rounded-lg px-3 py-2.5 mb-4 transition-colors"
+                >
+                  <span className="flex-shrink-0">▶</span>
+                  <span>Watch video on Reddit</span>
+                  <span className="flex-shrink-0 text-gray-500">↗</span>
+                </a>
+              )}
+
+              {/* External link (non-image, non-self, non-gallery, non-video) */}
+              {!post.isSelf && !post.isGallery && !post.isVideo && post.url && !isImageUrl(post.url, post.domain) && (
                 <a
                   href={post.url}
                   target="_blank"
