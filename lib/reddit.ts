@@ -1,3 +1,9 @@
+export interface RedditGalleryImage {
+  url: string;
+  width: number;
+  height: number;
+}
+
 export interface RedditPost {
   id: string;
   title: string;
@@ -15,6 +21,8 @@ export interface RedditPost {
   flair: string | null;
   domain: string;
   stickied: boolean;
+  isGallery: boolean;
+  galleryImages: RedditGalleryImage[];
 }
 
 export interface RedditComment {
@@ -55,6 +63,25 @@ const BROWSER_HEADERS = {
 // Arctic Shift returns posts as flat objects (no {kind, data} wrapper)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapArchivePost(d: any): RedditPost {
+  // Extract gallery images for is_gallery posts
+  let isGallery = false;
+  let galleryImages: RedditGalleryImage[] = [];
+  if (d.is_gallery && d.gallery_data?.items && d.media_metadata) {
+    isGallery = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    galleryImages = (d.gallery_data.items as any[])
+      .map((item: { media_id: string }) => {
+        const meta = d.media_metadata[item.media_id];
+        if (!meta?.s?.u) return null;
+        return {
+          url: (meta.s.u as string).replace(/&amp;/g, "&"),
+          width: meta.s.x ?? 0,
+          height: meta.s.y ?? 0,
+        };
+      })
+      .filter((x): x is RedditGalleryImage => x !== null);
+  }
+
   return {
     id: d.id,
     title: d.title ?? "",
@@ -80,6 +107,8 @@ function mapArchivePost(d: any): RedditPost {
     flair: d.link_flair_text ?? null,
     domain: d.domain ?? "",
     stickied: d.stickied ?? false,
+    isGallery,
+    galleryImages,
   };
 }
 
@@ -134,7 +163,7 @@ export async function fetchPostComments(
     id: postId, title: "", author: "", subreddit, score: 0,
     numComments: 0, url: "", permalink: "", thumbnail: null,
     selftext: "", isVideo: false, isSelf: false, createdUtc: 0,
-    flair: null, domain: "", stickied: false,
+    flair: null, domain: "", stickied: false, isGallery: false, galleryImages: [],
   };
   if (postRes.ok) {
     const postJson = await postRes.json();
