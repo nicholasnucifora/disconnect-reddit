@@ -118,7 +118,7 @@ export async function fetchSubredditPosts(
   _sort: "hot" | "top" | "new" = "hot",
   limit = 25
 ): Promise<RedditPost[]> {
-  const url = `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=${subreddit}&limit=${limit}&sort=desc`;
+  const url = `https://arctic-shift.photon-reddit.com/api/posts/search?subreddit=${subreddit}&limit=${limit}&sort=-created_utc`;
 
   const res = await fetch(url, { headers: BROWSER_HEADERS });
 
