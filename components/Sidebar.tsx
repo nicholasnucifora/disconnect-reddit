@@ -5,7 +5,11 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { useSubreddits } from "@/lib/subreddits-context";
 
-export default function Sidebar() {
+interface SidebarProps {
+  open?: boolean;
+}
+
+export default function Sidebar({ open = false }: SidebarProps) {
   const { subreddits, addSubreddit, removeSubreddit } = useSubreddits();
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +34,7 @@ export default function Sidebar() {
   const activeSubreddit = pathname.match(/^\/r\/([^/]+)/)?.[1]?.toLowerCase();
 
   return (
-    <aside className="fixed top-12 left-0 w-52 h-[calc(100vh-48px)] overflow-y-auto bg-gray-950 border-r border-gray-800 flex flex-col z-40">
+    <aside className={`fixed top-12 left-0 w-64 md:w-52 h-[calc(100vh-48px)] overflow-y-auto bg-gray-950 border-r border-gray-800 flex flex-col z-40 transition-transform duration-200 ${open ? "translate-x-0" : "-translate-x-full"} md:translate-x-0`}>
       <nav className="flex-1 p-3 space-y-0.5">
         {/* Home */}
         <Link

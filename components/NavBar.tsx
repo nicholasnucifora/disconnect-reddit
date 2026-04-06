@@ -5,7 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 
-export default function NavBar() {
+interface NavBarProps {
+  onMenuClick?: () => void;
+}
+
+export default function NavBar({ onMenuClick }: NavBarProps) {
   const pathname = usePathname();
   const router = useRouter();
 
@@ -46,12 +50,26 @@ export default function NavBar() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-950 border-b border-gray-800">
       <div className="max-w-3xl mx-auto px-4 h-12 flex items-center justify-between">
-        <Link
-          href="/"
-          className="font-bold text-white tracking-tight hover:text-teal-400 transition-colors"
-        >
-          Disconnected Reddit
-        </Link>
+        <div className="flex items-center gap-3">
+          {/* Hamburger — mobile only */}
+          <button
+            onClick={onMenuClick}
+            className="md:hidden text-gray-400 hover:text-gray-100 transition-colors p-1 -ml-1"
+            aria-label="Toggle menu"
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+              <rect y="3" width="20" height="2" rx="1" />
+              <rect y="9" width="20" height="2" rx="1" />
+              <rect y="15" width="20" height="2" rx="1" />
+            </svg>
+          </button>
+          <Link
+            href="/"
+            className="font-bold text-white tracking-tight hover:text-teal-400 transition-colors"
+          >
+            Disconnected Reddit
+          </Link>
+        </div>
 
         {postId && (
           <button
