@@ -40,6 +40,8 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const isHomeRoute = pathname === "/";
   const activeSubreddit = pathname.match(/^\/r\/([^/]+)/)?.[1]?.toLowerCase();
   const isSavedPostsActive = pathname === "/saved-posts";
+  const isWatchTimeActive = pathname === "/watch-time";
+  const isSettingsActive = pathname === "/settings";
   const activeFeed = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];
 
   function handleAdd() {
@@ -131,14 +133,36 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
       <nav className="flex-1 space-y-1 p-4">
         <Link
           href="/saved-posts"
-          className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
             isSavedPostsActive
               ? "bg-amber-950/50 text-amber-200"
               : "text-gray-300 hover:bg-gray-900 hover:text-white"
           }`}
         >
-          <span className="text-base leading-none">★</span>
+          <span className="text-base leading-none">Save</span>
           <span>Saved Posts</span>
+        </Link>
+        <Link
+          href="/watch-time"
+          className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+            isWatchTimeActive
+              ? "bg-gray-900 text-white"
+              : "text-gray-300 hover:bg-gray-900 hover:text-white"
+          }`}
+        >
+          <span className="text-base leading-none">Watch</span>
+          <span>Watch Time</span>
+        </Link>
+        <Link
+          href="/settings"
+          className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+            isSettingsActive
+              ? "bg-gray-900 text-white"
+              : "text-gray-300 hover:bg-gray-900 hover:text-white"
+          }`}
+        >
+          <span className="text-base leading-none">Set</span>
+          <span>Settings</span>
         </Link>
 
         <p className="px-2 pb-1 text-sm uppercase tracking-widest text-gray-600">Feeds</p>

@@ -150,7 +150,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
                 }`}
               >
-                {saved ? "â˜…" : "â˜†"}
+                {saved ? "\u2605" : "\u2606"}
               </button>
             </div>
 
@@ -234,14 +234,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                   className="absolute left-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80 md:flex"
                   aria-label="Previous image"
                 >
-                  â€¹
+                  {"\u2039"}
                 </button>
                 <button
                   onClick={nextImg}
                   className="absolute right-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80 md:flex"
                   aria-label="Next image"
                 >
-                  â€º
+                  {"\u203A"}
                 </button>
                 <div className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-xs text-white sm:px-3 sm:text-sm">
                   {imgIndex + 1} / {images.length}
@@ -272,7 +272,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             onClick={navigateToPost}
             className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-indigo-300"
           >
-            <span>ðŸ’¬</span>
+            <span>{"\u{1F4AC}"}</span>
             <span>
               {resolvedNumComments} comment{resolvedNumComments !== 1 ? "s" : ""}
             </span>
@@ -283,7 +283,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             rel="noopener noreferrer"
             className="text-sm text-gray-500 transition-colors hover:text-gray-300"
           >
-            Open on Reddit â†—
+            Open on Reddit {"\u2197"}
           </a>
         </div>
       </div>

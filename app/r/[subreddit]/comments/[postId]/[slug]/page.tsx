@@ -177,12 +177,38 @@ export default function PostPage() {
           onClick={handleBack}
           className="mb-6 flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-gray-200"
         >
-          â† Back
+          {"\u2190"} Back
         </button>
 
         {!post && loading && (
-          <div className="flex items-center justify-center py-16">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+          <div className="space-y-6 animate-pulse">
+            <div className="rounded-lg border border-gray-800 bg-gray-900 p-4 sm:p-7">
+              <div className="mb-3 h-4 w-24 rounded bg-gray-800" />
+              <div className="mb-3 h-8 w-4/5 rounded bg-gray-800" />
+              <div className="mb-6 flex gap-3">
+                <div className="h-4 w-24 rounded bg-gray-800" />
+                <div className="h-4 w-16 rounded bg-gray-800" />
+                <div className="h-4 w-20 rounded bg-gray-800" />
+              </div>
+              <div className="mb-6 aspect-[4/3] w-full rounded-lg bg-gray-800" />
+              <div className="space-y-3">
+                <div className="h-4 w-full rounded bg-gray-800" />
+                <div className="h-4 w-11/12 rounded bg-gray-800" />
+                <div className="h-4 w-3/4 rounded bg-gray-800" />
+              </div>
+            </div>
+            <div className="space-y-4">
+              {[80, 60, 90, 50].map((width, index) => (
+                <div key={index} className="flex gap-3">
+                  <div className="w-0.5 flex-shrink-0 self-stretch rounded-full bg-gray-800" />
+                  <div className="flex-1 space-y-2 py-1">
+                    <div className="h-3 w-24 rounded bg-gray-800" />
+                    <div className="h-3 rounded bg-gray-800" style={{ width: `${width}%` }} />
+                    <div className="h-3 w-3/4 rounded bg-gray-800" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -212,7 +238,7 @@ export default function PostPage() {
                       : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
                   }`}
                 >
-                  {saved ? "â˜…" : "â˜†"}
+                  {saved ? "\u2605" : "\u2606"}
                 </button>
               </div>
 
@@ -261,7 +287,7 @@ export default function PostPage() {
                         className="absolute left-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80 md:flex"
                         aria-label="Previous image"
                       >
-                        â€¹
+                        {"\u2039"}
                       </button>
                       <button
                         onClick={() =>
@@ -270,7 +296,7 @@ export default function PostPage() {
                         className="absolute right-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80 md:flex"
                         aria-label="Next image"
                       >
-                        â€º
+                        {"\u203A"}
                       </button>
                       <div className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
                         {galleryIndex + 1} / {post.galleryImages.length}
@@ -316,9 +342,9 @@ export default function PostPage() {
                   rel="noopener noreferrer"
                   className="mb-5 flex items-center gap-2 rounded-lg bg-gray-800 px-4 py-3 text-base text-indigo-400 transition-colors hover:text-indigo-300"
                 >
-                  <span className="flex-shrink-0">â–¶</span>
+                  <span className="flex-shrink-0">{"\u25B6"}</span>
                   <span>Watch video on Reddit</span>
-                  <span className="flex-shrink-0 text-gray-500">â†—</span>
+                  <span className="flex-shrink-0 text-gray-500">{"\u2197"}</span>
                 </a>
               )}
 
@@ -333,9 +359,9 @@ export default function PostPage() {
                     rel="noopener noreferrer"
                     className="mb-5 flex items-center gap-2 truncate rounded-lg bg-gray-800 px-4 py-3 text-base text-indigo-400 transition-colors hover:text-indigo-300"
                   >
-                    <span className="flex-shrink-0">ðŸ”—</span>
+                    <span className="flex-shrink-0">{"\u{1F517}"}</span>
                     <span className="truncate">{post.url}</span>
-                    <span className="flex-shrink-0 text-gray-500">â†—</span>
+                    <span className="flex-shrink-0 text-gray-500">{"\u2197"}</span>
                   </a>
                 )}
 
@@ -350,7 +376,7 @@ export default function PostPage() {
                   rel="noopener noreferrer"
                   className="text-sm text-gray-500 transition-colors hover:text-gray-300"
                 >
-                  Open on Reddit â†—
+                  Open on Reddit {"\u2197"}
                 </a>
               </div>
             </article>

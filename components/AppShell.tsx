@@ -29,7 +29,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
-        <div className="pt-14 md:pt-16 md:pl-60">
+        <div className="overflow-x-hidden pt-14 md:pt-16 md:pl-60">
           <UsageGate>{children}</UsageGate>
         </div>
       </>
