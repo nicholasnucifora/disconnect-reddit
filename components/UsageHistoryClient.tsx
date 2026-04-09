@@ -85,7 +85,7 @@ export default function UsageHistoryClient() {
               Daily usage
             </p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-white">
-              Usage History
+              Watch Time
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-400">
               Track total Reddit time, today&apos;s schedule state, and which feeds or subreddits took the day.
@@ -175,10 +175,10 @@ export default function UsageHistoryClient() {
                 This app now enforces total Reddit time and optional schedules. Limits and schedules come from the backend tables described in the implementation notes.
               </p>
               <Link
-                href="/"
+                href="/settings"
                 className="mt-5 inline-flex rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-gray-950 transition-colors hover:bg-white"
               >
-                Back to Reddit feeds
+                Open settings
               </Link>
             </div>
           </section>

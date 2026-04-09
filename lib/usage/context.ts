@@ -20,7 +20,13 @@ export function getUsageBrowsingContext(args: {
 }): UsageBrowsingContext | null {
   const { pathname, feeds, activeFeedId, subredditFeedMap } = args;
 
-  if (!pathname || pathname.startsWith("/auth") || pathname.startsWith("/usage")) {
+  if (
+    !pathname ||
+    pathname.startsWith("/auth") ||
+    pathname.startsWith("/usage") ||
+    pathname.startsWith("/watch-time") ||
+    pathname.startsWith("/settings")
+  ) {
     return null;
   }
 

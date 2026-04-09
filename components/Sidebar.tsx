@@ -103,15 +103,27 @@ export default function Sidebar({ open = false }: SidebarProps) {
         </Link>
 
         <Link
-          href="/usage"
+          href="/watch-time"
           className={`mt-1 flex items-center gap-2 rounded px-3 py-2 text-base transition-colors ${
-            pathname === "/usage"
+            pathname === "/watch-time" || pathname === "/usage"
               ? "bg-teal-950/50 text-teal-300"
               : "text-gray-400 hover:bg-gray-900 hover:text-gray-100"
           }`}
         >
           <span>U</span>
-          <span className="truncate">Usage History</span>
+          <span className="truncate">Watch Time</span>
+        </Link>
+
+        <Link
+          href="/settings"
+          className={`mt-1 flex items-center gap-2 rounded px-3 py-2 text-base transition-colors ${
+            pathname === "/settings"
+              ? "bg-teal-950/50 text-teal-300"
+              : "text-gray-400 hover:bg-gray-900 hover:text-gray-100"
+          }`}
+        >
+          <span>S</span>
+          <span className="truncate">Settings</span>
         </Link>
 
         <div className="space-y-1 pt-3">

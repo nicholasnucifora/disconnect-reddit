@@ -11,6 +11,8 @@ export default function UsageGate({ children }: { children: React.ReactNode }) {
 
   if (
     pathname.startsWith("/usage") ||
+    pathname.startsWith("/watch-time") ||
+    pathname.startsWith("/settings") ||
     pathname.startsWith("/auth") ||
     !status ||
     (!isBlocked && !isLimitReached)
@@ -46,7 +48,7 @@ export default function UsageGate({ children }: { children: React.ReactNode }) {
           <p className="mt-3 text-sm leading-6 text-gray-300">{description}</p>
           <div className="mt-5 flex items-center gap-3">
             <Link
-              href="/usage"
+              href="/watch-time"
               className="rounded-full bg-teal-400 px-4 py-2 text-sm font-medium text-gray-950 transition-colors hover:bg-teal-300"
             >
               Open usage history

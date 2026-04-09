@@ -105,3 +105,9 @@ export interface UsageHistoryPayload {
   today: UsageStatusPayload;
   chart: UsageChartDay[];
 }
+
+export interface UsageSettingsPayload {
+  timezone: string;
+  dailyLimitSeconds: number | null;
+  schedules: UsageScheduleWithWindows[];
+}

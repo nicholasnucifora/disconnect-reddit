@@ -10,6 +10,7 @@ import {
   type UsageScheduleWindowRow,
   type UsageScheduleWithWindows,
   type UsageSettingsRow,
+  type UsageSettingsPayload,
   type UsageStatusPayload,
   type UsageTrackEntryInput,
   type UsageWindowStatus,
@@ -114,6 +115,70 @@ async function getSchedules(): Promise<UsageScheduleWithWindows[]> {
       if (priorityDiff !== 0) return priorityDiff;
       return (a.created_at ?? "").localeCompare(b.created_at ?? "");
     });
+}
+
+export async function getUsageSettingsPayload(now = new Date()): Promise<UsageSettingsPayload> {
+  const [settings, schedules] = await Promise.all([ensureSettings(now), getSchedules()]);
+  return {
+    timezone: normalizeTimeZone(settings.timezone),
+    dailyLimitSeconds: settings.daily_limit_seconds,
+    schedules,
+  };
+}
+
+export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, now = new Date()) {
+  const supabase = createClient();
+  const timezone = normalizeTimeZone(payload.timezone);
+
+  const currentSettings = await ensureSettings(now);
+  const nextResetAt = getNextLocalMidnight(now, timezone).toISOString();
+
+  await supabase
+    .from("user_usage_settings")
+    .upsert(
+      {
+        username: USERNAME,
+        timezone,
+        daily_limit_seconds: payload.dailyLimitSeconds,
+        daily_usage_seconds: currentSettings.daily_usage_seconds,
+        daily_reset_at: nextResetAt,
+      },
+      { onConflict: "username" },
+    );
+
+  await supabase.from("usage_schedules").delete().eq("username", USERNAME);
+
+  if (payload.schedules.length > 0) {
+    const scheduleRows = payload.schedules.map((schedule) => ({
+      username: USERNAME,
+      name: schedule.name,
+      days: schedule.days,
+      all_day: schedule.all_day,
+      banned: schedule.banned,
+      daily_allowance_seconds: schedule.daily_allowance_seconds,
+      priority: schedule.priority ?? 0,
+    }));
+
+    const { data: insertedSchedules } = await supabase
+      .from("usage_schedules")
+      .insert(scheduleRows)
+      .select("id");
+
+    const windowsToInsert =
+      insertedSchedules?.flatMap((inserted, index) =>
+        payload.schedules[index].windows.map((window) => ({
+          schedule_id: inserted.id,
+          start_time: window.start_time,
+          end_time: window.end_time,
+        })),
+      ) ?? [];
+
+    if (windowsToInsert.length > 0) {
+      await supabase.from("usage_schedule_windows").insert(windowsToInsert);
+    }
+  }
+
+  return getUsageSettingsPayload(now);
 }
 
 function getScheduleForWeekday(

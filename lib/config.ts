@@ -1,2 +1,2 @@
-// Change this to whatever username you inserted into user_settings
-export const USERNAME = "homey";
+// Global scope used for app-wide settings in this single-user build.
+export const USERNAME = "global";

@@ -90,7 +90,7 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
 
         <div className="flex items-center gap-3">
           <Link
-            href="/usage"
+            href="/watch-time"
             className={`min-w-[11rem] rounded-xl border px-3 py-2 transition-colors ${pillTone.outer}`}
           >
             <div className="flex items-center justify-between gap-4">
