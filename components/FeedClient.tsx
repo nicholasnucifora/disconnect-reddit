@@ -18,6 +18,7 @@ export default function FeedClient() {
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [dismissedReady, setDismissedReady] = useState(false);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
@@ -99,6 +100,32 @@ export default function FeedClient() {
     }
   }
 
+  async function clearPreparedFeed() {
+    setClearing(true);
+    setRefreshMessage(null);
+    try {
+      const res = await fetch("/api/reddit/precompute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "clear", feedId: activeFeedId }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error ?? "Failed to clear prepared feed");
+      }
+
+      await fetchPosts();
+      setRefreshMessage(`Cleared ${body.deletedSnapshots ?? 0} stored snapshots for this feed.`);
+    } catch (err) {
+      setRefreshMessage(err instanceof Error ? err.message : "Failed to clear prepared feed");
+    } finally {
+      setClearing(false);
+    }
+  }
+
   async function dismissPost(postId: string) {
     setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));
     setPosts((prev) => prev.filter((p) => p.id !== postId));
@@ -155,13 +182,22 @@ export default function FeedClient() {
             Rebuild this feed snapshot now to test fresh comment counts.
           </p>
         </div>
-        <button
-          onClick={refreshPreparedFeed}
-          disabled={loading || refreshing || activeSubs.length === 0}
-          className="rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
-        >
-          {refreshing ? "Refreshing..." : "Refresh Feed Data"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={clearPreparedFeed}
+            disabled={loading || clearing || refreshing || activeSubs.length === 0}
+            className="rounded border border-red-800 bg-red-950/40 px-3 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-900/50 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+          >
+            {clearing ? "Clearing..." : "Clear Feed Data"}
+          </button>
+          <button
+            onClick={refreshPreparedFeed}
+            disabled={loading || clearing || refreshing || activeSubs.length === 0}
+            className="rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
+          >
+            {refreshing ? "Refreshing..." : "Refresh Feed Data"}
+          </button>
+        </div>
       </div>
 
       {refreshMessage && (

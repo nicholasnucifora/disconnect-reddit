@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildAllFeedSnapshots, buildAndStoreFeedSnapshot } from "@/lib/feed-snapshots";
+import {
+  buildAllFeedSnapshots,
+  buildAndStoreFeedSnapshot,
+  clearFeedSnapshot,
+} from "@/lib/feed-snapshots";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -33,6 +37,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const feedId = typeof body?.feedId === "string" && body.feedId.trim() ? body.feedId : "home";
+    if (body?.action === "clear") {
+      const result = await clearFeedSnapshot(feedId);
+      return NextResponse.json({
+        ok: true,
+        action: "clear",
+        feedId,
+        deletedSnapshots: result.deletedSnapshots,
+      });
+    }
+
     const snapshot = await buildAndStoreFeedSnapshot(feedId);
 
     return NextResponse.json({

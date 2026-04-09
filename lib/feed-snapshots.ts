@@ -281,3 +281,30 @@ export async function buildAllFeedSnapshots(): Promise<Array<{ feedId: string; p
 
   return results;
 }
+
+export async function clearFeedSnapshot(feedId: string): Promise<{ deletedSnapshots: number }> {
+  const supabase = createClient();
+
+  const subreddits = await getFeedSubreddits(feedId);
+  if (subreddits.length > 0) {
+    await supabase
+      .from("post_comment_counts")
+      .delete()
+      .in("subreddit", subreddits.map((subreddit) => normalizeSubreddit(subreddit)));
+  }
+
+  const { data, error } = await supabase
+    .from("feed_snapshots")
+    .delete()
+    .eq("username", USERNAME)
+    .eq("feed_id", feedId)
+    .select("id");
+
+  if (error) {
+    throw new Error(`Failed to clear feed snapshot: ${error.message}`);
+  }
+
+  return {
+    deletedSnapshots: data?.length ?? 0,
+  };
+}
