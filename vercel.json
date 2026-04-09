@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/reddit/precompute",
+      "schedule": "0 22 * * *"
+    }
+  ]
+}

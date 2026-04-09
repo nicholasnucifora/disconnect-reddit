@@ -1,6 +1,6 @@
 "use client";
 
-import type { Feed } from "@/lib/feeds-context";
+import type { Feed } from "@/lib/feeds";
 
 export interface UsageBrowsingContext {
   feedId: string;

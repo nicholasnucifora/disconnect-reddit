@@ -16,6 +16,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
   const {
     feeds,
     activeFeedId,
+    ready: feedsReady,
     getSubredditsForFeed,
     setActiveFeed,
     createFeed,
@@ -39,6 +40,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
   const activeFeed = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];
 
   function handleAdd() {
+    if (!feedsReady) return;
     const name = input.trim().replace(/^r\//, "");
     if (!name) {
       setError("Enter a subreddit name");
@@ -50,13 +52,13 @@ export default function Sidebar({ open = false }: SidebarProps) {
     }
     setError(null);
     void addSubreddit(name);
-    assignSubreddit(name, activeFeedId);
+    void assignSubreddit(name, activeFeedId);
     setInput("");
   }
 
   function handleRemove(subreddit: string) {
     void removeSubreddit(subreddit);
-    removeSubredditFromFeeds(subreddit);
+    void removeSubredditFromFeeds(subreddit);
   }
 
   function toggleCollapse(feedId: string) {
@@ -68,10 +70,11 @@ export default function Sidebar({ open = false }: SidebarProps) {
     });
   }
 
-  function handleCreateFeed() {
+  async function handleCreateFeed() {
     const name = newFeedName.trim();
     if (!name) return;
-    const feed = createFeed(name);
+    const feed = await createFeed(name);
+    if (!feed) return;
     setActiveFeed(feed.id);
     setCreatingFeed(false);
     setNewFeedName("");
@@ -79,7 +82,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
 
   function handleDrop(targetFeedId: string) {
     if (dragging && dragging.fromFeedId !== targetFeedId) {
-      assignSubreddit(dragging.sub, targetFeedId);
+      void assignSubreddit(dragging.sub, targetFeedId);
     }
     setDragging(null);
     setDragOverFeedId(null);
@@ -140,7 +143,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
                 </button>
                 {feed.id !== "home" && (
                   <button
-                    onClick={() => deleteFeed(feed.id)}
+                    onClick={() => void deleteFeed(feed.id)}
                     className="p-1.5 text-sm text-gray-600 opacity-0 transition-all hover:text-red-400 group-hover/feed:opacity-100"
                     title="Delete feed"
                   >

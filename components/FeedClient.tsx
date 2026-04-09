@@ -3,7 +3,6 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
-import { hydratePostsWithCommentCounts } from "@/lib/comment-counts-client";
 import { RedditPost } from "@/lib/reddit";
 import { useSubreddits } from "@/lib/subreddits-context";
 import { useFeeds } from "@/lib/feeds-context";
@@ -11,7 +10,7 @@ import PostCard from "./PostCard";
 
 export default function FeedClient() {
   const { subreddits, ready: subredditsReady } = useSubreddits();
-  const { getActiveFeedSubreddits } = useFeeds();
+  const { activeFeedId, getActiveFeedSubreddits, ready: feedsReady } = useFeeds();
   const activeSubs = useMemo(
     () => getActiveFeedSubreddits(subreddits),
     [getActiveFeedSubreddits, subreddits]
@@ -45,7 +44,7 @@ export default function FeedClient() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ready = subredditsReady && dismissedReady;
+  const ready = subredditsReady && dismissedReady && feedsReady;
   const fetchPosts = useCallback(async () => {
     if (activeSubs.length === 0) {
       setPosts([]);
@@ -55,20 +54,18 @@ export default function FeedClient() {
     setLoading(true);
     setFetchErrors([]);
     try {
-      const res = await fetch(`/api/reddit/posts?subreddits=${activeSubs.join(",")}&sort=hot`);
+      const res = await fetch(`/api/reddit/feed?feedId=${encodeURIComponent(activeFeedId)}`);
       if (!res.ok) throw new Error("Failed to fetch posts");
       const json = await res.json();
       const fetched: RedditPost[] = json.posts ?? [];
       setFetchErrors(json.errors ?? []);
-      const visiblePosts = fetched.filter((p) => !dismissedIds.has(p.id));
-      const hydratedPosts = await hydratePostsWithCommentCounts(visiblePosts);
-      setPosts(hydratedPosts);
+      setPosts(fetched.filter((p) => !dismissedIds.has(p.id)));
     } catch (e) {
       setFetchErrors([e instanceof Error ? e.message : "Unknown error"]);
     } finally {
       setLoading(false);
     }
-  }, [activeSubs, dismissedIds]);
+  }, [activeFeedId, activeSubs, dismissedIds]);
 
   useEffect(() => {
     if (ready) fetchPosts();
