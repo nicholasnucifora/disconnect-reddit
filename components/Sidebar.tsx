@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { useSubreddits } from "@/lib/subreddits-context";
 import { useFeeds } from "@/lib/feeds-context";
@@ -11,6 +11,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ open = false }: SidebarProps) {
+  const router = useRouter();
   const { subreddits, addSubreddit, removeSubreddit } = useSubreddits();
   const {
     feeds,
@@ -32,6 +33,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
   const [dragOverFeedId, setDragOverFeedId] = useState<string | null>(null);
 
   const pathname = usePathname();
+  const isHomeRoute = pathname === "/";
   const activeSubreddit = pathname.match(/^\/r\/([^/]+)/)?.[1]?.toLowerCase();
   const isSavedPostsActive = pathname === "/saved-posts";
   const activeFeed = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];
@@ -83,6 +85,11 @@ export default function Sidebar({ open = false }: SidebarProps) {
     setDragOverFeedId(null);
   }
 
+  function handleFeedClick(feedId: string) {
+    setActiveFeed(feedId);
+    router.push("/");
+  }
+
   return (
     <aside
       className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-64px)] w-72 flex-col overflow-y-auto border-r border-gray-800 bg-gray-950 transition-transform duration-200 md:w-60 ${
@@ -106,7 +113,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
 
         {feeds.map((feed) => {
           const feedSubreddits = getSubredditsForFeed(subreddits, feed.id);
-          const isActive = feed.id === activeFeedId;
+          const isActive = isHomeRoute && feed.id === activeFeedId;
           const isCollapsed = collapsedFeeds.has(feed.id);
           const isDragOver = dragOverFeedId === feed.id && dragging?.fromFeedId !== feed.id;
 
@@ -124,7 +131,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
                   {isCollapsed ? ">" : "v"}
                 </button>
                 <button
-                  onClick={() => setActiveFeed(feed.id)}
+                  onClick={() => handleFeedClick(feed.id)}
                   className={`flex-1 truncate px-1 py-1.5 text-left text-base transition-colors ${
                     isActive ? "font-medium text-teal-300" : "text-gray-300 hover:text-gray-100"
                   }`}
