@@ -63,6 +63,7 @@ export default function PostPage() {
   const displayedCommentCount = post
     ? Math.max(post.numComments, loadedCommentCount)
     : loadedCommentCount;
+  const galleryTranslate = `calc(${-galleryIndex * 100}% + ${galleryTouchDeltaX}px)`;
 
   useEffect(() => {
     async function load() {
@@ -233,12 +234,21 @@ export default function PostPage() {
                   onTouchEnd={handleGalleryTouchEnd}
                   onTouchCancel={handleGalleryTouchEnd}
                 >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={post.galleryImages[galleryIndex].url}
-                    alt={`${post.title} (${galleryIndex + 1} of ${post.galleryImages.length})`}
-                    className="max-h-[520px] w-full object-contain sm:max-h-[760px]"
-                  />
+                  <div
+                    className={`flex ${galleryTouchStartX === null ? "transition-transform duration-200 ease-out" : ""}`}
+                    style={{ transform: `translateX(${galleryTranslate})` }}
+                  >
+                    {post.galleryImages.map((image, index) => (
+                      <div key={`${post.id}-${index}`} className="w-full flex-shrink-0">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={image.url}
+                          alt={`${post.title} (${index + 1} of ${post.galleryImages.length})`}
+                          className="max-h-[520px] w-full object-contain sm:max-h-[760px]"
+                        />
+                      </div>
+                    ))}
+                  </div>
                   {post.galleryImages.length > 1 && (
                     <>
                       <button

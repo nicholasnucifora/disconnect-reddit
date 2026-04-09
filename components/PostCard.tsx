@@ -77,6 +77,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     ? [post.url]
     : [];
   const hasThumbnail = !showLargeMedia && !!post.thumbnail;
+  const galleryTranslate = `calc(${-imgIndex * 100}% + ${touchDeltaX}px)`;
 
   function prevImg(e: React.MouseEvent) {
     e.stopPropagation();
@@ -205,14 +206,26 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             onTouchEnd={handleGalleryTouchEnd}
             onTouchCancel={handleGalleryTouchEnd}
           >
-            <a href={detailUrl} onClick={navigateToPost} className="block">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={images[imgIndex]}
-                alt={post.title}
-                className="max-h-[480px] w-full object-contain sm:max-h-[680px]"
-              />
-            </a>
+            <div
+              className={`flex ${touchStartX === null ? "transition-transform duration-200 ease-out" : ""}`}
+              style={{ transform: `translateX(${galleryTranslate})` }}
+            >
+              {images.map((imageUrl, index) => (
+                <a
+                  key={`${post.id}-${index}`}
+                  href={detailUrl}
+                  onClick={navigateToPost}
+                  className="block w-full flex-shrink-0"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={imageUrl}
+                    alt={post.title}
+                    className="max-h-[480px] w-full object-contain sm:max-h-[680px]"
+                  />
+                </a>
+              ))}
+            </div>
 
             {images.length > 1 && (
               <>
