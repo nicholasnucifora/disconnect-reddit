@@ -117,7 +117,11 @@ function mergePosts(posts: RedditPost[]): RedditPost[] {
     .sort((a, b) => b.score - a.score);
 }
 
-async function buildFeedPosts(feedId: string): Promise<RedditPost[]> {
+interface BuildFeedPostsOptions {
+  forceRefresh?: boolean;
+}
+
+async function buildFeedPosts(feedId: string, options: BuildFeedPostsOptions = {}): Promise<RedditPost[]> {
   const subreddits = await getFeedSubreddits(feedId);
   if (subreddits.length === 0) return [];
 
@@ -135,8 +139,9 @@ async function buildFeedPosts(feedId: string): Promise<RedditPost[]> {
   const merged = mergePosts(posts);
   const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
   const postsToRefresh = merged
-    .slice(0, SNAPSHOT_REFRESH_LIMIT)
+    .slice(0, options.forceRefresh ? SNAPSHOT_POST_LIMIT : SNAPSHOT_REFRESH_LIMIT)
     .filter((post) => {
+      if (options.forceRefresh) return true;
       const cached = cachedCounts.get(post.id);
       return !cached || isCommentCountStale(cached);
     })
@@ -204,8 +209,15 @@ export async function readLatestFeedSnapshot(feedId: string): Promise<FeedSnapsh
   };
 }
 
-export async function buildAndStoreFeedSnapshot(feedId: string): Promise<FeedSnapshotResult> {
-  const posts = await buildFeedPosts(feedId);
+interface BuildFeedSnapshotOptions {
+  forceRefresh?: boolean;
+}
+
+export async function buildAndStoreFeedSnapshot(
+  feedId: string,
+  options: BuildFeedSnapshotOptions = {}
+): Promise<FeedSnapshotResult> {
+  const posts = await buildFeedPosts(feedId, options);
   const generatedAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + SNAPSHOT_TTL_MS).toISOString();
   const supabase = createClient();

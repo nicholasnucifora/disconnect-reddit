@@ -89,7 +89,7 @@ export default function FeedClient() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ feedId: activeFeedId }),
+        body: JSON.stringify({ feedId: activeFeedId, forceRefresh: true }),
       });
 
       const body = await res.json().catch(() => ({}));

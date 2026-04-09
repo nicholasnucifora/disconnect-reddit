@@ -9,6 +9,15 @@ export interface RefreshedCommentCount extends CommentCountTarget {
   numComments: number;
 }
 
+async function fetchPostCommentCountWithRetry(postId: string, retries = 1): Promise<number> {
+  try {
+    return await fetchPostCommentCount(postId);
+  } catch (error) {
+    if (retries <= 0) throw error;
+    return fetchPostCommentCountWithRetry(postId, retries - 1);
+  }
+}
+
 export async function refreshCommentCounts(
   posts: CommentCountTarget[],
   concurrency = 4
@@ -24,7 +33,7 @@ export async function refreshCommentCounts(
 
         const post = posts[currentIndex];
         try {
-          const numComments = await fetchPostCommentCount(post.postId);
+          const numComments = await fetchPostCommentCountWithRetry(post.postId, 1);
           results.push({
             postId: post.postId,
             subreddit: post.subreddit,

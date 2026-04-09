@@ -47,7 +47,9 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const snapshot = await buildAndStoreFeedSnapshot(feedId);
+    const snapshot = await buildAndStoreFeedSnapshot(feedId, {
+      forceRefresh: body?.forceRefresh === true,
+    });
 
     return NextResponse.json({
       ok: true,
