@@ -32,6 +32,8 @@ export default function Sidebar({ open = false }: SidebarProps) {
   const [dragOverFeedId, setDragOverFeedId] = useState<string | null>(null);
 
   const pathname = usePathname();
+  const activeSubreddit = pathname.match(/^\/r\/([^/]+)/)?.[1]?.toLowerCase();
+  const activeFeed = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];
 
   function handleAdd() {
     const name = input.trim().replace(/^r\//, "");
@@ -43,15 +45,14 @@ export default function Sidebar({ open = false }: SidebarProps) {
       setError(`r/${name} already added`);
       return;
     }
-
     setError(null);
-    addSubreddit(name);
+    void addSubreddit(name);
     assignSubreddit(name, activeFeedId);
     setInput("");
   }
 
   function handleRemove(subreddit: string) {
-    removeSubreddit(subreddit);
+    void removeSubreddit(subreddit);
     removeSubredditFromFeeds(subreddit);
   }
 
@@ -81,195 +82,155 @@ export default function Sidebar({ open = false }: SidebarProps) {
     setDragOverFeedId(null);
   }
 
-  const isHome = pathname === "/";
-  const activeSubreddit = pathname.match(/^\/r\/([^/]+)/)?.[1]?.toLowerCase();
-  const activeFeed = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];
-
   return (
     <aside
       className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-64px)] w-72 flex-col overflow-y-auto border-r border-gray-800 bg-gray-950 transition-transform duration-200 md:w-60 ${
         open ? "translate-x-0" : "-translate-x-full"
       } md:translate-x-0`}
     >
-      <nav className="flex-1 space-y-0.5 p-4">
-        <Link
-          href="/"
-          className={`flex items-center gap-2 rounded px-3 py-2 text-base transition-colors ${
-            isHome ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-900 hover:text-gray-100"
-          }`}
-        >
-          <span>H</span>
-          <span className="truncate">{activeFeed?.name ?? "Home Feed"}</span>
-        </Link>
+      <nav className="flex-1 space-y-1 p-4">
+        <p className="px-2 pb-1 text-sm uppercase tracking-widest text-gray-600">Feeds</p>
 
-        <Link
-          href="/watch-time"
-          className={`mt-1 flex items-center gap-2 rounded px-3 py-2 text-base transition-colors ${
-            pathname === "/watch-time" || pathname === "/usage"
-              ? "bg-teal-950/50 text-teal-300"
-              : "text-gray-400 hover:bg-gray-900 hover:text-gray-100"
-          }`}
-        >
-          <span>U</span>
-          <span className="truncate">Watch Time</span>
-        </Link>
+        {feeds.map((feed) => {
+          const feedSubreddits = getSubredditsForFeed(subreddits, feed.id);
+          const isActive = feed.id === activeFeedId;
+          const isCollapsed = collapsedFeeds.has(feed.id);
+          const isDragOver = dragOverFeedId === feed.id && dragging?.fromFeedId !== feed.id;
 
-        <Link
-          href="/settings"
-          className={`mt-1 flex items-center gap-2 rounded px-3 py-2 text-base transition-colors ${
-            pathname === "/settings"
-              ? "bg-teal-950/50 text-teal-300"
-              : "text-gray-400 hover:bg-gray-900 hover:text-gray-100"
-          }`}
-        >
-          <span>S</span>
-          <span className="truncate">Settings</span>
-        </Link>
-
-        <div className="space-y-1 pt-3">
-          <p className="px-2 pb-1 text-sm uppercase tracking-widest text-gray-600">Feeds</p>
-
-          {feeds.map((feed) => {
-            const feedSubreddits = getSubredditsForFeed(subreddits, feed.id);
-            const isActive = feed.id === activeFeedId;
-            const isCollapsed = collapsedFeeds.has(feed.id);
-            const isDragOver = dragOverFeedId === feed.id && dragging?.fromFeedId !== feed.id;
-
-            return (
-              <div key={feed.id}>
-                <div
-                  className={`group/feed flex items-center gap-0.5 rounded transition-colors ${
-                    isActive ? "bg-teal-950/50" : ""
+          return (
+            <div key={feed.id}>
+              <div
+                className={`group/feed flex items-center gap-0.5 rounded transition-colors ${
+                  isActive ? "bg-teal-950/50" : ""
+                }`}
+              >
+                <button
+                  onClick={() => toggleCollapse(feed.id)}
+                  className="w-7 flex-shrink-0 p-1.5 text-sm text-gray-600 transition-colors hover:text-gray-400"
+                >
+                  {isCollapsed ? ">" : "v"}
+                </button>
+                <button
+                  onClick={() => setActiveFeed(feed.id)}
+                  className={`flex-1 truncate px-1 py-1.5 text-left text-base transition-colors ${
+                    isActive ? "font-medium text-teal-300" : "text-gray-300 hover:text-gray-100"
                   }`}
                 >
+                  {feed.name}
+                </button>
+                {feed.id !== "home" && (
                   <button
-                    onClick={() => toggleCollapse(feed.id)}
-                    className="w-7 flex-shrink-0 p-1.5 text-sm text-gray-600 transition-colors hover:text-gray-400"
+                    onClick={() => deleteFeed(feed.id)}
+                    className="p-1.5 text-sm text-gray-600 opacity-0 transition-all hover:text-red-400 group-hover/feed:opacity-100"
+                    title="Delete feed"
                   >
-                    {isCollapsed ? ">" : "v"}
+                    x
                   </button>
-                  <button
-                    onClick={() => setActiveFeed(feed.id)}
-                    className={`flex-1 truncate px-1 py-1.5 text-left text-base transition-colors ${
-                      isActive ? "font-medium text-teal-300" : "text-gray-300 hover:text-gray-100"
-                    }`}
-                  >
-                    {feed.name}
-                  </button>
-                  {feed.id !== "home" && (
-                    <button
-                      onClick={() => deleteFeed(feed.id)}
-                      className="p-1.5 text-sm text-gray-600 opacity-0 transition-all hover:text-red-400 group-hover/feed:opacity-100"
-                      title="Delete feed"
-                    >
-                      x
-                    </button>
-                  )}
-                </div>
-
-                {!isCollapsed && (
-                  <div
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      setDragOverFeedId(feed.id);
-                    }}
-                    onDragLeave={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        setDragOverFeedId(null);
-                      }
-                    }}
-                    onDrop={() => handleDrop(feed.id)}
-                    className={`rounded pl-6 transition-colors ${
-                      isDragOver ? "bg-teal-950/40 ring-1 ring-teal-700/50" : ""
-                    }`}
-                  >
-                    {feedSubreddits.map((subreddit) => {
-                      const isSubredditActive = activeSubreddit === subreddit.toLowerCase();
-                      const isDraggingThis = dragging?.sub === subreddit;
-
-                      return (
-                        <div
-                          key={subreddit}
-                          draggable
-                          onDragStart={() => setDragging({ sub: subreddit, fromFeedId: feed.id })}
-                          onDragEnd={() => {
-                            setDragging(null);
-                            setDragOverFeedId(null);
-                          }}
-                          className={`group/sub flex cursor-grab items-center gap-0.5 active:cursor-grabbing ${
-                            isDraggingThis ? "opacity-40" : ""
-                          }`}
-                        >
-                          <span className="select-none px-0.5 text-sm text-gray-700">#</span>
-                          <Link
-                            href={`/r/${subreddit}`}
-                            className={`flex-1 truncate rounded px-2 py-1.5 text-base transition-colors ${
-                              isSubredditActive
-                                ? "bg-teal-900/40 text-teal-300"
-                                : "text-gray-300 hover:bg-gray-900 hover:text-gray-100"
-                            }`}
-                          >
-                            r/{subreddit}
-                          </Link>
-                          <button
-                            onClick={() => handleRemove(subreddit)}
-                            className="p-1.5 text-sm text-gray-600 opacity-0 transition-all hover:text-red-400 group-hover/sub:opacity-100"
-                            aria-label={`Remove r/${subreddit}`}
-                          >
-                            x
-                          </button>
-                        </div>
-                      );
-                    })}
-
-                    {feedSubreddits.length === 0 && (
-                      <p className="px-2 py-1.5 text-sm italic text-gray-700">
-                        {isDragOver ? "Drop here" : "Empty"}
-                      </p>
-                    )}
-                  </div>
                 )}
               </div>
-            );
-          })}
 
-          {creatingFeed ? (
-            <div className="flex gap-1.5 pl-6 pt-1">
-              <input
-                autoFocus
-                type="text"
-                value={newFeedName}
-                onChange={(event) => setNewFeedName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") handleCreateFeed();
-                  if (event.key === "Escape") {
-                    setCreatingFeed(false);
-                    setNewFeedName("");
-                  }
-                }}
-                onBlur={() => {
-                  if (!newFeedName.trim()) setCreatingFeed(false);
-                }}
-                placeholder="Feed name"
-                className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:border-teal-600 focus:outline-none"
-              />
-              <button
-                onClick={handleCreateFeed}
-                className="rounded bg-teal-700 px-2.5 py-1.5 text-sm text-white transition-colors hover:bg-teal-600"
-              >
-                Save
-              </button>
+              {!isCollapsed && (
+                <div
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setDragOverFeedId(feed.id);
+                  }}
+                  onDragLeave={(event) => {
+                    if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                      setDragOverFeedId(null);
+                    }
+                  }}
+                  onDrop={() => handleDrop(feed.id)}
+                  className={`rounded pl-6 transition-colors ${
+                    isDragOver ? "bg-teal-950/40 ring-1 ring-teal-700/50" : ""
+                  }`}
+                >
+                  {feedSubreddits.map((subreddit) => {
+                    const isSubredditActive = activeSubreddit === subreddit.toLowerCase();
+                    const isDraggingThis = dragging?.sub === subreddit;
+
+                    return (
+                      <div
+                        key={subreddit}
+                        draggable
+                        onDragStart={() => setDragging({ sub: subreddit, fromFeedId: feed.id })}
+                        onDragEnd={() => {
+                          setDragging(null);
+                          setDragOverFeedId(null);
+                        }}
+                        className={`group/sub flex cursor-grab items-center gap-0.5 active:cursor-grabbing ${
+                          isDraggingThis ? "opacity-40" : ""
+                        }`}
+                      >
+                        <span className="select-none px-0.5 text-sm text-gray-700">#</span>
+                        <Link
+                          href={`/r/${subreddit}`}
+                          className={`flex-1 truncate rounded px-2 py-1.5 text-base transition-colors ${
+                            isSubredditActive
+                              ? "bg-teal-900/40 text-teal-300"
+                              : "text-gray-300 hover:bg-gray-900 hover:text-gray-100"
+                          }`}
+                        >
+                          r/{subreddit}
+                        </Link>
+                        <button
+                          onClick={() => handleRemove(subreddit)}
+                          className="p-1.5 text-sm text-gray-600 opacity-0 transition-all hover:text-red-400 group-hover/sub:opacity-100"
+                          aria-label={`Remove r/${subreddit}`}
+                        >
+                          x
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  {feedSubreddits.length === 0 && (
+                    <p className="px-2 py-1.5 text-sm italic text-gray-700">
+                      {isDragOver ? "Drop here" : "Empty"}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
+          );
+        })}
+
+        {creatingFeed ? (
+          <div className="flex gap-1.5 pt-2">
+            <input
+              autoFocus
+              type="text"
+              value={newFeedName}
+              onChange={(event) => setNewFeedName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") handleCreateFeed();
+                if (event.key === "Escape") {
+                  setCreatingFeed(false);
+                  setNewFeedName("");
+                }
+              }}
+              onBlur={() => {
+                if (!newFeedName.trim()) setCreatingFeed(false);
+              }}
+              placeholder="Feed name"
+              className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:border-teal-600 focus:outline-none"
+            />
             <button
-              onClick={() => setCreatingFeed(true)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-300"
+              onClick={handleCreateFeed}
+              className="rounded bg-teal-700 px-2.5 py-1.5 text-sm text-white transition-colors hover:bg-teal-600"
             >
-              <span>+</span>
-              <span>New Feed</span>
+              Save
             </button>
-          )}
-        </div>
+          </div>
+        ) : (
+          <button
+            onClick={() => setCreatingFeed(true)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-300"
+          >
+            <span>+</span>
+            <span>New Feed</span>
+          </button>
+        )}
       </nav>
 
       <div className="space-y-2 border-t border-gray-800 p-4">

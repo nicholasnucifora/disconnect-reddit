@@ -26,18 +26,34 @@ import {
 } from "./time";
 
 type ScheduleCandidate = UsageScheduleWithWindows | null;
+const DEFAULT_DAILY_LIMIT_SECONDS = 60 * 60;
 
 function clampSeconds(value: number): number {
   return Math.max(0, Math.min(Math.floor(value), 300));
 }
 
+function requireData<T>(result: { data: T | null; error: { message: string } | null }, context: string): T {
+  if (result.error) {
+    throw new Error(`${context}: ${result.error.message}`);
+  }
+  return result.data as T;
+}
+
+function ensureDailyLimit(value: number | null | undefined): number {
+  return value == null || value <= 0 ? DEFAULT_DAILY_LIMIT_SECONDS : value;
+}
+
 async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
   const supabase = createClient();
-  const { data } = await supabase
+  const result = await supabase
     .from("user_usage_settings")
     .select("username, timezone, daily_limit_seconds, daily_usage_seconds, daily_reset_at")
     .eq("username", USERNAME)
     .maybeSingle();
+  if (result.error) {
+    throw new Error(`load user_usage_settings: ${result.error.message}`);
+  }
+  const data = result.data as UsageSettingsRow | null;
 
   const timezone = normalizeTimeZone((data as UsageSettingsRow | null)?.timezone ?? DEFAULT_TIMEZONE);
   const currentResetAt = data?.daily_reset_at ? new Date(data.daily_reset_at) : null;
@@ -46,11 +62,14 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
     const initial: UsageSettingsRow = {
       username: USERNAME,
       timezone,
-      daily_limit_seconds: null,
+      daily_limit_seconds: DEFAULT_DAILY_LIMIT_SECONDS,
       daily_usage_seconds: 0,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
     };
-    await supabase.from("user_usage_settings").upsert(initial, { onConflict: "username" });
+    const upsertResult = await supabase.from("user_usage_settings").upsert(initial, { onConflict: "username" });
+    if (upsertResult.error) {
+      throw new Error(`create user_usage_settings: ${upsertResult.error.message}`);
+    }
     return initial;
   }
 
@@ -58,11 +77,11 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
     const reset: UsageSettingsRow = {
       username: USERNAME,
       timezone,
-      daily_limit_seconds: data.daily_limit_seconds ?? null,
+      daily_limit_seconds: ensureDailyLimit(data.daily_limit_seconds),
       daily_usage_seconds: 0,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
     };
-    await supabase
+    const updateResult = await supabase
       .from("user_usage_settings")
       .update({
         timezone,
@@ -71,13 +90,16 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
         daily_reset_at: reset.daily_reset_at,
       })
       .eq("username", USERNAME);
+    if (updateResult.error) {
+      throw new Error(`reset user_usage_settings: ${updateResult.error.message}`);
+    }
     return reset;
   }
 
   return {
     username: USERNAME,
     timezone,
-    daily_limit_seconds: data.daily_limit_seconds ?? null,
+    daily_limit_seconds: ensureDailyLimit(data.daily_limit_seconds),
     daily_usage_seconds: data.daily_usage_seconds ?? 0,
     daily_reset_at: currentResetAt.toISOString(),
   };
@@ -85,7 +107,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
 
 async function getSchedules(): Promise<UsageScheduleWithWindows[]> {
   const supabase = createClient();
-  const [{ data: schedulesData }, { data: windowsData }] = await Promise.all([
+  const [schedulesResult, windowsResult] = await Promise.all([
     supabase
       .from("usage_schedules")
       .select("id, username, name, days, all_day, banned, daily_allowance_seconds, priority, created_at")
@@ -94,6 +116,8 @@ async function getSchedules(): Promise<UsageScheduleWithWindows[]> {
       .from("usage_schedule_windows")
       .select("id, schedule_id, start_time, end_time"),
   ]);
+  const schedulesData = requireData(schedulesResult, "load usage_schedules");
+  const windowsData = requireData(windowsResult, "load usage_schedule_windows");
 
   const windowsBySchedule = new Map<string, UsageScheduleWindowRow[]>();
   (windowsData as UsageScheduleWindowRow[] | null ?? []).forEach((window) => {
@@ -121,7 +145,7 @@ export async function getUsageSettingsPayload(now = new Date()): Promise<UsageSe
   const [settings, schedules] = await Promise.all([ensureSettings(now), getSchedules()]);
   return {
     timezone: normalizeTimeZone(settings.timezone),
-    dailyLimitSeconds: settings.daily_limit_seconds,
+    dailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
     schedules,
   };
 }
@@ -133,20 +157,26 @@ export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, no
   const currentSettings = await ensureSettings(now);
   const nextResetAt = getNextLocalMidnight(now, timezone).toISOString();
 
-  await supabase
+  const settingsWrite = await supabase
     .from("user_usage_settings")
     .upsert(
       {
         username: USERNAME,
         timezone,
-        daily_limit_seconds: payload.dailyLimitSeconds,
+        daily_limit_seconds: ensureDailyLimit(payload.dailyLimitSeconds),
         daily_usage_seconds: currentSettings.daily_usage_seconds,
         daily_reset_at: nextResetAt,
       },
       { onConflict: "username" },
     );
+  if (settingsWrite.error) {
+    throw new Error(`save user_usage_settings: ${settingsWrite.error.message}`);
+  }
 
-  await supabase.from("usage_schedules").delete().eq("username", USERNAME);
+  const deleteSchedules = await supabase.from("usage_schedules").delete().eq("username", USERNAME);
+  if (deleteSchedules.error) {
+    throw new Error(`delete usage_schedules: ${deleteSchedules.error.message}`);
+  }
 
   if (payload.schedules.length > 0) {
     const scheduleRows = payload.schedules.map((schedule) => ({
@@ -159,22 +189,28 @@ export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, no
       priority: schedule.priority ?? 0,
     }));
 
-    const { data: insertedSchedules } = await supabase
+    const insertedSchedules = requireData(
+      await supabase
       .from("usage_schedules")
       .insert(scheduleRows)
-      .select("id");
+      .select("id"),
+      "insert usage_schedules",
+    );
 
     const windowsToInsert =
-      insertedSchedules?.flatMap((inserted, index) =>
+      insertedSchedules.flatMap((inserted, index) =>
         payload.schedules[index].windows.map((window) => ({
           schedule_id: inserted.id,
           start_time: window.start_time,
           end_time: window.end_time,
         })),
-      ) ?? [];
+      );
 
     if (windowsToInsert.length > 0) {
-      await supabase.from("usage_schedule_windows").insert(windowsToInsert);
+      const insertWindows = await supabase.from("usage_schedule_windows").insert(windowsToInsert);
+      if (insertWindows.error) {
+        throw new Error(`insert usage_schedule_windows: ${insertWindows.error.message}`);
+      }
     }
   }
 
@@ -271,7 +307,7 @@ function buildStatusPayload(
   const hasScheduleToday = !!currentSchedule;
   const isBlockedBySchedule = !!currentSchedule && !isWithinWindow;
   const effectiveDailyLimitSeconds =
-    currentSchedule?.daily_allowance_seconds ?? settings.daily_limit_seconds ?? null;
+    currentSchedule?.daily_allowance_seconds ?? ensureDailyLimit(settings.daily_limit_seconds);
   const remainingSeconds =
     effectiveDailyLimitSeconds == null
       ? null
@@ -286,7 +322,7 @@ function buildStatusPayload(
     todayKey: getLocalDateKey(now, timezone),
     timezone,
     dailyUsageSeconds: settings.daily_usage_seconds,
-    globalDailyLimitSeconds: settings.daily_limit_seconds,
+    globalDailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
     effectiveDailyLimitSeconds,
     remainingSeconds,
     dailyResetAt: settings.daily_reset_at,
@@ -339,7 +375,7 @@ export async function trackUsageEntries(
   const usageDate = getLocalDateKey(now, timeZone);
   const totalSeconds = sanitized.reduce((sum, entry) => sum + entry.seconds, 0);
 
-  await supabase.from("reddit_usage_events").insert(
+  const insertEvents = await supabase.from("reddit_usage_events").insert(
     sanitized.map((entry) => ({
       username: USERNAME,
       occurred_at: now.toISOString(),
@@ -350,12 +386,15 @@ export async function trackUsageEntries(
       subreddit: entry.subreddit,
     })),
   );
+  if (insertEvents.error) {
+    throw new Error(`insert reddit_usage_events: ${insertEvents.error.message}`);
+  }
 
   const nextDailyUsageSeconds = settingsBefore.daily_usage_seconds + totalSeconds;
   const nextResetAt =
     settingsBefore.daily_reset_at || getNextLocalMidnight(now, timeZone).toISOString();
 
-  await supabase
+  const updateUsage = await supabase
     .from("user_usage_settings")
     .update({
       daily_usage_seconds: nextDailyUsageSeconds,
@@ -363,6 +402,9 @@ export async function trackUsageEntries(
       timezone: timeZone,
     })
     .eq("username", USERNAME);
+  if (updateUsage.error) {
+    throw new Error(`update user_usage_settings usage: ${updateUsage.error.message}`);
+  }
 
   return buildStatusPayload(
     {
@@ -414,7 +456,7 @@ export async function getUsageHistory(
     const day = chartMap.get(event.usage_date) ?? {
       date: event.usage_date,
       usageSeconds: 0,
-      limitSeconds: getLimitForDate(event.usage_date, schedules, settings.daily_limit_seconds, timeZone),
+      limitSeconds: getLimitForDate(event.usage_date, schedules, ensureDailyLimit(settings.daily_limit_seconds), timeZone),
       feedSegments: [],
       subredditSegments: [],
     };

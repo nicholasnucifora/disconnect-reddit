@@ -58,8 +58,7 @@ export default function UsageSettingsClient() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [timezone, setTimezone] = useState("Australia/Brisbane");
-  const [unlimited, setUnlimited] = useState(true);
-  const [dailyLimitMinutes, setDailyLimitMinutes] = useState("");
+  const [dailyLimitMinutes, setDailyLimitMinutes] = useState("60");
   const [schedules, setSchedules] = useState<UsageScheduleWithWindows[]>([]);
 
   useEffect(() => {
@@ -73,8 +72,7 @@ export default function UsageSettingsClient() {
         const payload = (await response.json()) as UsageSettingsPayload;
         if (ignore) return;
         setTimezone(payload.timezone);
-        setUnlimited(payload.dailyLimitSeconds == null);
-        setDailyLimitMinutes(toMinutes(payload.dailyLimitSeconds));
+        setDailyLimitMinutes(toMinutes(payload.dailyLimitSeconds) || "60");
         setSchedules(payload.schedules);
       } finally {
         if (!ignore) setLoading(false);
@@ -98,7 +96,7 @@ export default function UsageSettingsClient() {
     try {
       const payload: UsageSettingsPayload = {
         timezone,
-        dailyLimitSeconds: unlimited ? null : fromMinutes(dailyLimitMinutes),
+        dailyLimitSeconds: fromMinutes(dailyLimitMinutes) ?? 3600,
         schedules: schedules.map((schedule, index) => ({
           ...schedule,
           priority: schedules.length - index,
@@ -115,8 +113,7 @@ export default function UsageSettingsClient() {
 
       const saved = (await response.json()) as UsageSettingsPayload;
       setTimezone(saved.timezone);
-      setUnlimited(saved.dailyLimitSeconds == null);
-      setDailyLimitMinutes(toMinutes(saved.dailyLimitSeconds));
+      setDailyLimitMinutes(toMinutes(saved.dailyLimitSeconds) || "60");
       setSchedules(saved.schedules);
       await refreshStatus();
       setMessage("Saved.");
@@ -170,22 +167,13 @@ export default function UsageSettingsClient() {
                 <div>
                   <span className="text-sm text-gray-400">Daily allowance</span>
                   <div className="mt-2 flex items-center gap-3">
-                    <label className="flex items-center gap-2 text-sm text-gray-300">
-                      <input
-                        type="checkbox"
-                        checked={unlimited}
-                        onChange={(event) => setUnlimited(event.target.checked)}
-                      />
-                      Unlimited
-                    </label>
                     <input
                       type="number"
                       min="1"
                       value={dailyLimitMinutes}
                       onChange={(event) => setDailyLimitMinutes(event.target.value)}
-                      disabled={unlimited}
                       className="w-40 rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white disabled:opacity-50"
-                      placeholder="120"
+                      placeholder="60"
                     />
                     <span className="text-sm text-gray-500">minutes</span>
                   </div>

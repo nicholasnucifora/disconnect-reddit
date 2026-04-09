@@ -55,20 +55,33 @@ function sanitizeSchedules(value: unknown): UsageScheduleWithWindows[] {
 }
 
 export async function GET() {
-  const settings = await getUsageSettingsPayload();
-  return NextResponse.json(settings);
+  try {
+    const settings = await getUsageSettingsPayload();
+    return NextResponse.json(settings);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to load settings" },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => ({}))) as Partial<UsageSettingsPayload>;
+  try {
+    const body = (await request.json().catch(() => ({}))) as Partial<UsageSettingsPayload>;
 
-  const payload: UsageSettingsPayload = {
-    timezone: typeof body.timezone === "string" ? body.timezone : "Australia/Brisbane",
-    dailyLimitSeconds:
-      body.dailyLimitSeconds == null ? null : Math.max(0, Number(body.dailyLimitSeconds) || 0),
-    schedules: sanitizeSchedules(body.schedules),
-  };
+    const payload: UsageSettingsPayload = {
+      timezone: typeof body.timezone === "string" ? body.timezone : "Australia/Brisbane",
+      dailyLimitSeconds: Math.max(60, Number(body.dailyLimitSeconds) || 3600),
+      schedules: sanitizeSchedules(body.schedules),
+    };
 
-  const settings = await saveUsageSettingsPayload(payload);
-  return NextResponse.json(settings);
+    const settings = await saveUsageSettingsPayload(payload);
+    return NextResponse.json(settings);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Failed to save settings" },
+      { status: 500 },
+    );
+  }
 }
