@@ -99,17 +99,16 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
           </Link>
         </div>
 
-        <div className="flex justify-center">
-          <div className="relative w-full max-w-sm" ref={menuRef}>
+        <div className="flex justify-end pr-8 md:pr-20">
+          <div className="relative w-full max-w-[17rem]" ref={menuRef}>
             <button
               onClick={() => setOpen((value) => !value)}
-              className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${pillTone.outer}`}
+              className={`w-full rounded-xl border px-3 py-1.5 text-left transition-colors ${pillTone.outer}`}
               aria-haspopup="menu"
               aria-expanded={open}
             >
               <div className="flex items-center justify-between gap-4">
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="text-sm text-gray-500">⚙</span>
+                <div className="min-w-0">
                   <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
                     Reddit today
                   </span>
@@ -118,17 +117,14 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
                   <span className={`text-sm font-medium ${pillTone.text}`}>
                     {headerLabel ?? "Loading"}
                   </span>
-                  <span className="text-xs text-gray-500">{open ? "▲" : "▼"}</span>
+                  <span className="text-sm text-gray-500">☰</span>
                 </div>
               </div>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-gray-800">
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-800">
                 <div
                   className={`h-full rounded-full transition-all duration-300 ${pillTone.bar}`}
                   style={{ width: `${progressPercent}%` }}
                 />
-              </div>
-              <div className="mt-2 text-xs text-gray-500">
-                Click for watch time and settings
               </div>
             </button>
 

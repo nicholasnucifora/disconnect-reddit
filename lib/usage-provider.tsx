@@ -201,7 +201,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       !!status &&
       !!currentContext &&
       document.visibilityState === "visible" &&
-      focusedRef.current &&
+      (status.countVisibleWithoutFocus || focusedRef.current) &&
       !status.isBlockedBySchedule &&
       !status.isLimitReached;
   }, [status, currentContext]);
@@ -273,8 +273,6 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       } else if (status.remainingSeconds != null) {
         headerLabel = `${formatDurationCompact(status.remainingSeconds)} left`;
         headerTone = status.remainingSeconds < 15 * 60 ? "warning" : "neutral";
-      } else {
-        headerLabel = "Unlimited";
       }
     }
 

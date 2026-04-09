@@ -9,6 +9,7 @@ export interface UsageSettingsRow {
   daily_limit_seconds: number | null;
   daily_usage_seconds: number;
   daily_reset_at: string;
+  count_visible_without_focus: boolean;
 }
 
 export interface UsageScheduleRow {
@@ -55,6 +56,7 @@ export interface UsageStatusPayload {
   now: string;
   todayKey: string;
   timezone: string;
+  countVisibleWithoutFocus: boolean;
   dailyUsageSeconds: number;
   globalDailyLimitSeconds: number | null;
   effectiveDailyLimitSeconds: number | null;
@@ -109,5 +111,6 @@ export interface UsageHistoryPayload {
 export interface UsageSettingsPayload {
   timezone: string;
   dailyLimitSeconds: number | null;
+  countVisibleWithoutFocus: boolean;
   schedules: UsageScheduleWithWindows[];
 }

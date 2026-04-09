@@ -4,6 +4,7 @@ create table if not exists user_usage_settings (
   daily_limit_seconds integer null,
   daily_usage_seconds integer not null default 0,
   daily_reset_at timestamptz not null,
+  count_visible_without_focus boolean not null default true,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -73,6 +73,7 @@ export async function POST(request: NextRequest) {
     const payload: UsageSettingsPayload = {
       timezone: typeof body.timezone === "string" ? body.timezone : "Australia/Brisbane",
       dailyLimitSeconds: Math.max(60, Number(body.dailyLimitSeconds) || 3600),
+      countVisibleWithoutFocus: body.countVisibleWithoutFocus !== false,
       schedules: sanitizeSchedules(body.schedules),
     };
 

@@ -47,7 +47,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
   const supabase = createClient();
   const result = await supabase
     .from("user_usage_settings")
-    .select("username, timezone, daily_limit_seconds, daily_usage_seconds, daily_reset_at")
+    .select("username, timezone, daily_limit_seconds, daily_usage_seconds, daily_reset_at, count_visible_without_focus")
     .eq("username", USERNAME)
     .maybeSingle();
   if (result.error) {
@@ -65,6 +65,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
       daily_limit_seconds: DEFAULT_DAILY_LIMIT_SECONDS,
       daily_usage_seconds: 0,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
+      count_visible_without_focus: true,
     };
     const upsertResult = await supabase.from("user_usage_settings").upsert(initial, { onConflict: "username" });
     if (upsertResult.error) {
@@ -80,6 +81,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
       daily_limit_seconds: ensureDailyLimit(data.daily_limit_seconds),
       daily_usage_seconds: 0,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
+      count_visible_without_focus: data.count_visible_without_focus ?? true,
     };
     const updateResult = await supabase
       .from("user_usage_settings")
@@ -88,6 +90,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
         daily_limit_seconds: reset.daily_limit_seconds,
         daily_usage_seconds: 0,
         daily_reset_at: reset.daily_reset_at,
+        count_visible_without_focus: reset.count_visible_without_focus,
       })
       .eq("username", USERNAME);
     if (updateResult.error) {
@@ -102,6 +105,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
     daily_limit_seconds: ensureDailyLimit(data.daily_limit_seconds),
     daily_usage_seconds: data.daily_usage_seconds ?? 0,
     daily_reset_at: currentResetAt.toISOString(),
+    count_visible_without_focus: data.count_visible_without_focus ?? true,
   };
 }
 
@@ -146,6 +150,7 @@ export async function getUsageSettingsPayload(now = new Date()): Promise<UsageSe
   return {
     timezone: normalizeTimeZone(settings.timezone),
     dailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
+    countVisibleWithoutFocus: settings.count_visible_without_focus,
     schedules,
   };
 }
@@ -166,6 +171,7 @@ export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, no
         daily_limit_seconds: ensureDailyLimit(payload.dailyLimitSeconds),
         daily_usage_seconds: currentSettings.daily_usage_seconds,
         daily_reset_at: nextResetAt,
+        count_visible_without_focus: payload.countVisibleWithoutFocus,
       },
       { onConflict: "username" },
     );
@@ -321,6 +327,7 @@ function buildStatusPayload(
     now: now.toISOString(),
     todayKey: getLocalDateKey(now, timezone),
     timezone,
+    countVisibleWithoutFocus: settings.count_visible_without_focus,
     dailyUsageSeconds: settings.daily_usage_seconds,
     globalDailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
     effectiveDailyLimitSeconds,
