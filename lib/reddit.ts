@@ -158,7 +158,7 @@ export async function fetchPostComments(
   // Fetch post data and comments in parallel
   const [postRes, commentsRes] = await Promise.all([
     fetch(
-      `https://arctic-shift.photon-reddit.com/api/posts/search?ids=t3_${postId}`,
+      `https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`,
       { headers: BROWSER_HEADERS }
     ),
     fetch(
@@ -256,7 +256,7 @@ export async function fetchPostCommentCount(postId: string): Promise<number> {
 
 export async function fetchPostScore(postId: string): Promise<number> {
   const res = await fetch(
-    `https://arctic-shift.photon-reddit.com/api/posts/search?ids=t3_${postId}`,
+    `https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`,
     { headers: BROWSER_HEADERS }
   );
 
