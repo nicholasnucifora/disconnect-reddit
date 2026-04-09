@@ -3,6 +3,7 @@ import "./globals.css";
 import AppShell from "@/components/AppShell";
 import { SubredditsProvider } from "@/lib/subreddits-context";
 import { FeedsProvider } from "@/lib/feeds-context";
+import { UsageProvider } from "@/lib/usage-provider";
 
 export const metadata: Metadata = {
   title: "Disconnected Reddit",
@@ -19,7 +20,9 @@ export default function RootLayout({
       <body className="bg-gray-950 text-gray-100 min-h-screen antialiased">
         <SubredditsProvider>
           <FeedsProvider>
-            <AppShell>{children}</AppShell>
+            <UsageProvider>
+              <AppShell>{children}</AppShell>
+            </UsageProvider>
           </FeedsProvider>
         </SubredditsProvider>
       </body>

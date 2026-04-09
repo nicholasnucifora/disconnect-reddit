@@ -13,8 +13,14 @@ interface SidebarProps {
 export default function Sidebar({ open = false }: SidebarProps) {
   const { subreddits, addSubreddit, removeSubreddit } = useSubreddits();
   const {
-    feeds, activeFeedId, getSubredditsForFeed,
-    setActiveFeed, createFeed, deleteFeed, assignSubreddit, removeSubredditFromFeeds,
+    feeds,
+    activeFeedId,
+    getSubredditsForFeed,
+    setActiveFeed,
+    createFeed,
+    deleteFeed,
+    assignSubreddit,
+    removeSubredditFromFeeds,
   } = useFeeds();
 
   const [input, setInput] = useState("");
@@ -29,25 +35,31 @@ export default function Sidebar({ open = false }: SidebarProps) {
 
   function handleAdd() {
     const name = input.trim().replace(/^r\//, "");
-    if (!name) { setError("Enter a subreddit name"); return; }
-    if (subreddits.map((s) => s.toLowerCase()).includes(name.toLowerCase())) {
-      setError(`r/${name} already added`); return;
+    if (!name) {
+      setError("Enter a subreddit name");
+      return;
     }
+    if (subreddits.map((subreddit) => subreddit.toLowerCase()).includes(name.toLowerCase())) {
+      setError(`r/${name} already added`);
+      return;
+    }
+
     setError(null);
     addSubreddit(name);
     assignSubreddit(name, activeFeedId);
     setInput("");
   }
 
-  function handleRemove(sub: string) {
-    removeSubreddit(sub);
-    removeSubredditFromFeeds(sub);
+  function handleRemove(subreddit: string) {
+    removeSubreddit(subreddit);
+    removeSubredditFromFeeds(subreddit);
   }
 
   function toggleCollapse(feedId: string) {
     setCollapsedFeeds((prev) => {
       const next = new Set(prev);
-      if (next.has(feedId)) next.delete(feedId); else next.add(feedId);
+      if (next.has(feedId)) next.delete(feedId);
+      else next.add(feedId);
       return next;
     });
   }
@@ -71,56 +83,63 @@ export default function Sidebar({ open = false }: SidebarProps) {
 
   const isHome = pathname === "/";
   const activeSubreddit = pathname.match(/^\/r\/([^/]+)/)?.[1]?.toLowerCase();
-  const activeFeed = feeds.find((f) => f.id === activeFeedId) ?? feeds[0];
+  const activeFeed = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];
 
   return (
     <aside
-      className={`fixed top-16 left-0 w-72 md:w-60 h-[calc(100vh-64px)] overflow-y-auto bg-gray-950 border-r border-gray-800 flex flex-col z-40 transition-transform duration-200 ${
+      className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-64px)] w-72 flex-col overflow-y-auto border-r border-gray-800 bg-gray-950 transition-transform duration-200 md:w-60 ${
         open ? "translate-x-0" : "-translate-x-full"
       } md:translate-x-0`}
     >
-      <nav className="flex-1 p-4 space-y-0.5">
-        {/* Home link — shows active feed name */}
+      <nav className="flex-1 space-y-0.5 p-4">
         <Link
           href="/"
-          className={`flex items-center gap-2 px-3 py-2 rounded text-base transition-colors ${
-            isHome
-              ? "bg-gray-800 text-white"
-              : "text-gray-400 hover:text-gray-100 hover:bg-gray-900"
+          className={`flex items-center gap-2 rounded px-3 py-2 text-base transition-colors ${
+            isHome ? "bg-gray-800 text-white" : "text-gray-400 hover:bg-gray-900 hover:text-gray-100"
           }`}
         >
-          <span>⌂</span>
+          <span>H</span>
           <span className="truncate">{activeFeed?.name ?? "Home Feed"}</span>
         </Link>
 
-        {/* Feeds list */}
-        <div className="pt-3 space-y-1">
-          <p className="text-sm text-gray-600 uppercase tracking-widest px-2 pb-1">Feeds</p>
+        <Link
+          href="/usage"
+          className={`mt-1 flex items-center gap-2 rounded px-3 py-2 text-base transition-colors ${
+            pathname === "/usage"
+              ? "bg-teal-950/50 text-teal-300"
+              : "text-gray-400 hover:bg-gray-900 hover:text-gray-100"
+          }`}
+        >
+          <span>U</span>
+          <span className="truncate">Usage History</span>
+        </Link>
+
+        <div className="space-y-1 pt-3">
+          <p className="px-2 pb-1 text-sm uppercase tracking-widest text-gray-600">Feeds</p>
 
           {feeds.map((feed) => {
-            const feedSubs = getSubredditsForFeed(subreddits, feed.id);
+            const feedSubreddits = getSubredditsForFeed(subreddits, feed.id);
             const isActive = feed.id === activeFeedId;
             const isCollapsed = collapsedFeeds.has(feed.id);
             const isDragOver = dragOverFeedId === feed.id && dragging?.fromFeedId !== feed.id;
 
             return (
               <div key={feed.id}>
-                {/* Feed header */}
                 <div
-                  className={`flex items-center gap-0.5 group/feed rounded transition-colors ${
+                  className={`group/feed flex items-center gap-0.5 rounded transition-colors ${
                     isActive ? "bg-teal-950/50" : ""
                   }`}
                 >
                   <button
                     onClick={() => toggleCollapse(feed.id)}
-                    className="p-1.5 text-gray-600 hover:text-gray-400 transition-colors text-sm w-7 flex-shrink-0"
+                    className="w-7 flex-shrink-0 p-1.5 text-sm text-gray-600 transition-colors hover:text-gray-400"
                   >
-                    {isCollapsed ? "▶" : "▼"}
+                    {isCollapsed ? ">" : "v"}
                   </button>
                   <button
                     onClick={() => setActiveFeed(feed.id)}
-                    className={`flex-1 text-left px-1 py-1.5 text-base truncate transition-colors ${
-                      isActive ? "text-teal-300 font-medium" : "text-gray-300 hover:text-gray-100"
+                    className={`flex-1 truncate px-1 py-1.5 text-left text-base transition-colors ${
+                      isActive ? "font-medium text-teal-300" : "text-gray-300 hover:text-gray-100"
                     }`}
                   >
                     {feed.name}
@@ -128,67 +147,71 @@ export default function Sidebar({ open = false }: SidebarProps) {
                   {feed.id !== "home" && (
                     <button
                       onClick={() => deleteFeed(feed.id)}
-                      className="opacity-0 group-hover/feed:opacity-100 p-1.5 text-gray-600 hover:text-red-400 transition-all text-sm flex-shrink-0"
+                      className="p-1.5 text-sm text-gray-600 opacity-0 transition-all hover:text-red-400 group-hover/feed:opacity-100"
                       title="Delete feed"
                     >
-                      ✕
+                      x
                     </button>
                   )}
                 </div>
 
-                {/* Subreddits — drop target */}
                 {!isCollapsed && (
                   <div
-                    onDragOver={(e) => { e.preventDefault(); setDragOverFeedId(feed.id); }}
-                    onDragLeave={(e) => {
-                      if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      setDragOverFeedId(feed.id);
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
                         setDragOverFeedId(null);
                       }
                     }}
                     onDrop={() => handleDrop(feed.id)}
-                    className={`pl-6 rounded transition-colors ${
+                    className={`rounded pl-6 transition-colors ${
                       isDragOver ? "bg-teal-950/40 ring-1 ring-teal-700/50" : ""
                     }`}
                   >
-                    {feedSubs.map((sub) => {
-                      const active = activeSubreddit === sub.toLowerCase();
-                      const isDraggingThis = dragging?.sub === sub;
+                    {feedSubreddits.map((subreddit) => {
+                      const isSubredditActive = activeSubreddit === subreddit.toLowerCase();
+                      const isDraggingThis = dragging?.sub === subreddit;
+
                       return (
                         <div
-                          key={sub}
+                          key={subreddit}
                           draggable
-                          onDragStart={() => setDragging({ sub, fromFeedId: feed.id })}
-                          onDragEnd={() => { setDragging(null); setDragOverFeedId(null); }}
-                          className={`group/sub flex items-center gap-0.5 cursor-grab active:cursor-grabbing ${
+                          onDragStart={() => setDragging({ sub: subreddit, fromFeedId: feed.id })}
+                          onDragEnd={() => {
+                            setDragging(null);
+                            setDragOverFeedId(null);
+                          }}
+                          className={`group/sub flex cursor-grab items-center gap-0.5 active:cursor-grabbing ${
                             isDraggingThis ? "opacity-40" : ""
                           }`}
                         >
-                          <span className="text-gray-700 text-sm flex-shrink-0 select-none px-0.5">
-                            ⠿
-                          </span>
+                          <span className="select-none px-0.5 text-sm text-gray-700">#</span>
                           <Link
-                            href={`/r/${sub}`}
-                            className={`flex-1 px-2 py-1.5 rounded text-base transition-colors truncate ${
-                              active
+                            href={`/r/${subreddit}`}
+                            className={`flex-1 truncate rounded px-2 py-1.5 text-base transition-colors ${
+                              isSubredditActive
                                 ? "bg-teal-900/40 text-teal-300"
-                                : "text-gray-300 hover:text-gray-100 hover:bg-gray-900"
+                                : "text-gray-300 hover:bg-gray-900 hover:text-gray-100"
                             }`}
                           >
-                            r/{sub}
+                            r/{subreddit}
                           </Link>
                           <button
-                            onClick={() => handleRemove(sub)}
-                            className="opacity-0 group-hover/sub:opacity-100 p-1.5 text-gray-600 hover:text-red-400 transition-all text-sm flex-shrink-0"
-                            aria-label={`Remove r/${sub}`}
+                            onClick={() => handleRemove(subreddit)}
+                            className="p-1.5 text-sm text-gray-600 opacity-0 transition-all hover:text-red-400 group-hover/sub:opacity-100"
+                            aria-label={`Remove r/${subreddit}`}
                           >
-                            ✕
+                            x
                           </button>
                         </div>
                       );
                     })}
 
-                    {feedSubs.length === 0 && (
-                      <p className="text-sm text-gray-700 px-2 py-1.5 italic">
+                    {feedSubreddits.length === 0 && (
+                      <p className="px-2 py-1.5 text-sm italic text-gray-700">
                         {isDragOver ? "Drop here" : "Empty"}
                       </p>
                     )}
@@ -198,34 +221,37 @@ export default function Sidebar({ open = false }: SidebarProps) {
             );
           })}
 
-          {/* New feed */}
           {creatingFeed ? (
             <div className="flex gap-1.5 pl-6 pt-1">
               <input
-                // eslint-disable-next-line jsx-a11y/no-autofocus
                 autoFocus
                 type="text"
                 value={newFeedName}
-                onChange={(e) => setNewFeedName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCreateFeed();
-                  if (e.key === "Escape") { setCreatingFeed(false); setNewFeedName(""); }
+                onChange={(event) => setNewFeedName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") handleCreateFeed();
+                  if (event.key === "Escape") {
+                    setCreatingFeed(false);
+                    setNewFeedName("");
+                  }
                 }}
-                onBlur={() => { if (!newFeedName.trim()) setCreatingFeed(false); }}
+                onBlur={() => {
+                  if (!newFeedName.trim()) setCreatingFeed(false);
+                }}
                 placeholder="Feed name"
-                className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-teal-600 min-w-0"
+                className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:border-teal-600 focus:outline-none"
               />
               <button
                 onClick={handleCreateFeed}
-                className="px-2.5 py-1.5 text-sm bg-teal-700 hover:bg-teal-600 text-white rounded transition-colors"
+                className="rounded bg-teal-700 px-2.5 py-1.5 text-sm text-white transition-colors hover:bg-teal-600"
               >
-                ✓
+                Save
               </button>
             </div>
           ) : (
             <button
               onClick={() => setCreatingFeed(true)}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-500 hover:text-gray-300 transition-colors w-full"
+              className="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-500 transition-colors hover:text-gray-300"
             >
               <span>+</span>
               <span>New Feed</span>
@@ -234,8 +260,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
         </div>
       </nav>
 
-      {/* Add subreddit — pinned to bottom */}
-      <div className="p-4 border-t border-gray-800 space-y-2">
+      <div className="space-y-2 border-t border-gray-800 p-4">
         <p className="text-sm text-gray-600">
           Adding to: <span className="text-gray-400">{activeFeed?.name}</span>
         </p>
@@ -243,19 +268,22 @@ export default function Sidebar({ open = false }: SidebarProps) {
           <input
             type="text"
             value={input}
-            onChange={(e) => { setInput(e.target.value); setError(null); }}
-            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            onChange={(event) => {
+              setInput(event.target.value);
+              setError(null);
+            }}
+            onKeyDown={(event) => event.key === "Enter" && handleAdd()}
             placeholder="r/subreddit"
-            className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:border-teal-600 transition-colors min-w-0"
+            className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm text-gray-100 placeholder-gray-500 transition-colors focus:border-teal-600 focus:outline-none"
           />
           <button
             onClick={handleAdd}
-            className="px-3 py-1.5 text-sm bg-teal-700 hover:bg-teal-600 text-white rounded transition-colors font-medium flex-shrink-0"
+            className="flex-shrink-0 rounded bg-teal-700 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-teal-600"
           >
             Add
           </button>
         </div>
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        {error && <p className="text-sm text-red-400">{error}</p>}
       </div>
     </aside>
   );

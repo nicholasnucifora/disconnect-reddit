@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import NavBar from "./NavBar";
 import Sidebar from "./Sidebar";
+import UsageGate from "./UsageGate";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -29,7 +30,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar open={sidebarOpen} />
 
       {/* Main content — full width on mobile, offset by sidebar on desktop */}
-      <div className="md:pl-60 pt-16">{children}</div>
+      <div className="md:pl-60 pt-16">
+        <UsageGate>{children}</UsageGate>
+      </div>
     </>
   );
 }
