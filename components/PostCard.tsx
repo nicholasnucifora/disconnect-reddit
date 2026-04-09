@@ -74,10 +74,6 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const hasGallery = post.isGallery && post.galleryImages.length > 0;
   const isImage = !post.isGallery && isDirectImage(post.url, post.domain);
   const showLargeMedia = hasGallery || isImage;
-  const commentLabel =
-    resolvedNumComments > 0
-      ? `${resolvedNumComments} comment${resolvedNumComments !== 1 ? "s" : ""}`
-      : "View comments";
   const images = hasGallery
     ? post.galleryImages.map((galleryImage) => galleryImage.url)
     : isImage
@@ -239,7 +235,9 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-indigo-300"
           >
             <span>💬</span>
-            <span>{commentLabel}</span>
+            <span>
+              {resolvedNumComments} comment{resolvedNumComments !== 1 ? "s" : ""}
+            </span>
           </a>
           <a
             href={redditUrl}

@@ -28,6 +28,19 @@ function isImageUrl(url: string, domain: string): boolean {
   );
 }
 
+function hasPostContent(post: RedditPost | null | undefined): post is RedditPost {
+  if (!post) return false;
+  return Boolean(
+    post.title ||
+    post.author ||
+    post.url ||
+    post.permalink ||
+    post.selftext ||
+    post.thumbnail ||
+    post.domain
+  );
+}
+
 export default function PostPage() {
   const params = useParams();
   const router = useRouter();
@@ -67,25 +80,28 @@ export default function PostPage() {
 
         const data = await res.json();
         const nextComments = data.comments ?? [];
-        const nextPost = data.post ?? post;
-        const correctedCommentCount = Math.max(
-          nextPost?.numComments ?? 0,
-          countLoadedComments(nextComments)
-        );
+        setPost((currentPost) => {
+          const apiPost = hasPostContent(data.post) ? data.post : null;
+          const basePost = apiPost ?? currentPost;
+          if (!basePost) return currentPost;
 
-        if (nextPost) {
+          const correctedCommentCount = Math.max(
+            basePost.numComments,
+            countLoadedComments(nextComments)
+          );
           const correctedPost =
-            correctedCommentCount === nextPost.numComments
-              ? nextPost
-              : { ...nextPost, numComments: correctedCommentCount };
+            correctedCommentCount === basePost.numComments
+              ? basePost
+              : { ...basePost, numComments: correctedCommentCount };
 
-          setPost(correctedPost);
           try {
             localStorage.setItem(`post:${postId}`, JSON.stringify(correctedPost));
           } catch {
             // storage unavailable
           }
-        }
+
+          return correctedPost;
+        });
 
         setComments(nextComments);
       } catch (err) {
