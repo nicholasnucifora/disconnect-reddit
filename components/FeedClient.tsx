@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
+import { hydratePostsWithCommentCounts } from "@/lib/comment-counts-client";
 import { RedditPost } from "@/lib/reddit";
 import { useSubreddits } from "@/lib/subreddits-context";
 import { useFeeds } from "@/lib/feeds-context";
@@ -45,11 +46,6 @@ export default function FeedClient() {
   }, []);
 
   const ready = subredditsReady && dismissedReady;
-  const visiblePostsKey = useMemo(
-    () => posts.slice(0, 24).map((post) => post.id).join(","),
-    [posts]
-  );
-
   const fetchPosts = useCallback(async () => {
     if (activeSubs.length === 0) {
       setPosts([]);
@@ -64,7 +60,9 @@ export default function FeedClient() {
       const json = await res.json();
       const fetched: RedditPost[] = json.posts ?? [];
       setFetchErrors(json.errors ?? []);
-      setPosts(fetched.filter((p) => !dismissedIds.has(p.id)));
+      const visiblePosts = fetched.filter((p) => !dismissedIds.has(p.id));
+      const hydratedPosts = await hydratePostsWithCommentCounts(visiblePosts);
+      setPosts(hydratedPosts);
     } catch (e) {
       setFetchErrors([e instanceof Error ? e.message : "Unknown error"]);
     } finally {
@@ -75,52 +73,6 @@ export default function FeedClient() {
   useEffect(() => {
     if (ready) fetchPosts();
   }, [fetchPosts, ready]);
-
-  useEffect(() => {
-    if (!ready || posts.length === 0) return;
-
-    let cancelled = false;
-    const visiblePosts = posts.slice(0, 24).map((post) => ({
-      postId: post.id,
-      subreddit: post.subreddit,
-    }));
-
-    async function hydrateCommentCounts() {
-      try {
-        const res = await fetch("/api/reddit/comment-counts", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ posts: visiblePosts }),
-        });
-
-        if (!res.ok) return;
-        const data = await res.json();
-        const counts = data.counts ?? {};
-
-        if (cancelled) return;
-
-        setPosts((prev) =>
-          prev.map((post) => {
-            const correctedCount = counts[post.id];
-            if (typeof correctedCount !== "number" || correctedCount <= post.numComments) {
-              return post;
-            }
-            return { ...post, numComments: correctedCount };
-          })
-        );
-      } catch {
-        // best effort only
-      }
-    }
-
-    hydrateCommentCounts();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [ready, visiblePostsKey]);
 
   async function dismissPost(postId: string) {
     setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));
