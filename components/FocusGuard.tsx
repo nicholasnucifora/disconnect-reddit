@@ -31,12 +31,39 @@ export default function FocusGuard({ children }: { children: React.ReactNode }) 
 
   const showOverlay = !shouldBypass(pathname) && isVisible && !isFocused;
 
+  useEffect(() => {
+    if (!showOverlay) return;
+
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    const previousBodyOverflow = document.body.style.overflow;
+    document.documentElement.style.overflow = "hidden";
+    document.body.style.overflow = "hidden";
+
+    const preventScroll = (event: Event) => {
+      event.preventDefault();
+    };
+
+    window.addEventListener("wheel", preventScroll, { passive: false });
+    window.addEventListener("touchmove", preventScroll, { passive: false });
+    window.addEventListener("keydown", preventScroll as EventListener, { passive: false });
+
+    return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.style.overflow = previousBodyOverflow;
+      window.removeEventListener("wheel", preventScroll);
+      window.removeEventListener("touchmove", preventScroll);
+      window.removeEventListener("keydown", preventScroll as EventListener);
+    };
+  }, [showOverlay]);
+
   return (
     <div className="relative">
-      <div className={showOverlay ? "pointer-events-none select-none blur-sm" : ""}>{children}</div>
+      <div className={showOverlay ? "pointer-events-none select-none blur-2xl saturate-0" : ""}>
+        {children}
+      </div>
       {showOverlay && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-950/88 backdrop-blur-sm">
-          <div className="rounded-2xl border border-gray-800 bg-gray-900/90 px-6 py-5 text-center shadow-2xl">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-950/94 backdrop-blur-md">
+          <div className="rounded-2xl border border-gray-800 bg-gray-900/95 px-6 py-5 text-center shadow-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">
               Focus required
             </p>
