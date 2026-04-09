@@ -7,6 +7,7 @@ export interface CachedCommentCount {
   postId: string;
   subreddit: string;
   numComments: number;
+  score: number;
   checkedAt: string;
   expiresAt: string;
 }
@@ -15,6 +16,7 @@ export interface CommentCountUpsert {
   postId: string;
   subreddit: string;
   numComments: number;
+  score: number;
 }
 
 function isMissingTableError(error: { code?: string; message?: string } | null): boolean {
@@ -32,7 +34,7 @@ export async function getCachedCommentCounts(postIds: string[]): Promise<Map<str
   const supabase = createClient();
   const { data, error } = await supabase
     .from("post_comment_counts")
-    .select("post_id, subreddit, num_comments, checked_at, expires_at")
+    .select("post_id, subreddit, num_comments, score, checked_at, expires_at")
     .in("post_id", uniquePostIds)
     .gt("expires_at", new Date().toISOString());
 
@@ -45,6 +47,7 @@ export async function getCachedCommentCounts(postIds: string[]): Promise<Map<str
     post_id: string;
     subreddit: string;
     num_comments: number;
+    score?: number;
     checked_at: string;
     expires_at: string;
   }) => [
@@ -53,6 +56,7 @@ export async function getCachedCommentCounts(postIds: string[]): Promise<Map<str
       postId: row.post_id,
       subreddit: row.subreddit,
       numComments: row.num_comments,
+      score: row.score ?? 0,
       checkedAt: row.checked_at,
       expiresAt: row.expires_at,
     } satisfies CachedCommentCount,
@@ -69,6 +73,7 @@ export async function upsertCommentCounts(entries: CommentCountUpsert[]): Promis
     post_id: entry.postId,
     subreddit: entry.subreddit,
     num_comments: entry.numComments,
+    score: entry.score,
     checked_at: new Date(now).toISOString(),
     expires_at: new Date(now + EXPIRY_WINDOW_MS).toISOString(),
   }));

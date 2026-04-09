@@ -254,6 +254,24 @@ export async function fetchPostCommentCount(postId: string): Promise<number> {
   return comments.length;
 }
 
+export async function fetchPostScore(postId: string): Promise<number> {
+  const res = await fetch(
+    `https://arctic-shift.photon-reddit.com/api/posts/search?ids=t3_${postId}`,
+    { headers: BROWSER_HEADERS }
+  );
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to fetch score for post ${postId}: ${res.status} ${res.statusText} — ${body}`
+    );
+  }
+
+  const json = await res.json();
+  const post = json?.data?.[0];
+  return post?.score ?? 0;
+}
+
 // Not currently used (legacy "load more" via Reddit direct — kept for reference)
 export async function fetchMoreComments(): Promise<RedditComment[]> {
   return [];

@@ -86,6 +86,7 @@ export async function GET(request: NextRequest) {
           postId: entry.postId,
           subreddit: entry.subreddit,
           numComments: entry.numComments,
+          score: entry.score,
           checkedAt: new Date().toISOString(),
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
         });
@@ -98,6 +99,7 @@ export async function GET(request: NextRequest) {
       return {
         ...post,
         numComments: Math.max(post.numComments, cached.numComments),
+        score: Math.max(post.score, cached.score),
       };
     });
 

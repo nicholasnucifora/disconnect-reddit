@@ -1,4 +1,4 @@
-import { fetchPostCommentCount } from "@/lib/reddit";
+import { fetchPostCommentCount, fetchPostScore } from "@/lib/reddit";
 
 export interface CommentCountTarget {
   postId: string;
@@ -7,6 +7,7 @@ export interface CommentCountTarget {
 
 export interface RefreshedCommentCount extends CommentCountTarget {
   numComments: number;
+  score: number;
 }
 
 export interface FailedCommentCountRefresh extends CommentCountTarget {
@@ -27,6 +28,15 @@ async function fetchPostCommentCountWithRetry(postId: string, retries = 1): Prom
   }
 }
 
+async function fetchPostScoreWithRetry(postId: string, retries = 1): Promise<number> {
+  try {
+    return await fetchPostScore(postId);
+  } catch (error) {
+    if (retries <= 0) throw error;
+    return fetchPostScoreWithRetry(postId, retries - 1);
+  }
+}
+
 export async function refreshCommentCounts(
   posts: CommentCountTarget[],
   concurrency = 4
@@ -43,11 +53,15 @@ export async function refreshCommentCounts(
 
         const post = posts[currentIndex];
         try {
-          const numComments = await fetchPostCommentCountWithRetry(post.postId, 1);
+          const [numComments, score] = await Promise.all([
+            fetchPostCommentCountWithRetry(post.postId, 1),
+            fetchPostScoreWithRetry(post.postId, 1),
+          ]);
           refreshed.push({
             postId: post.postId,
             subreddit: post.subreddit,
             numComments,
+            score,
           });
         } catch (error) {
           failed.push({
