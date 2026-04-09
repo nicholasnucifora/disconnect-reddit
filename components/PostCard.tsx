@@ -7,6 +7,7 @@ import { useSavedPosts } from "@/lib/saved-posts";
 
 const CARD_SWIPE_TRIGGER = 72;
 const CARD_SWIPE_PREVIEW = 120;
+const CARD_SWIPE_START = 4;
 const SWIPE_CLICK_SUPPRESSION_MS = 250;
 
 function timeAgo(utcSeconds: number): string {
@@ -32,16 +33,21 @@ interface PostCardProps {
 
 export default function PostCard({ post, onDismiss }: PostCardProps) {
   const router = useRouter();
+  const articleRef = useRef<HTMLElement | null>(null);
+  const frameRef = useRef<number | null>(null);
+  const swipeOffsetRef = useRef(0);
+  const cardTouchStartXRef = useRef<number | null>(null);
+  const cardTouchStartYRef = useRef<number | null>(null);
+  const cardSwipeActiveRef = useRef(false);
+  const suppressClickUntilRef = useRef(0);
+
   const [clicked, setClicked] = useState(false);
   const [imgIndex, setImgIndex] = useState(0);
   const [resolvedNumComments, setResolvedNumComments] = useState(post.numComments);
   const [galleryTouchStartX, setGalleryTouchStartX] = useState<number | null>(null);
   const [galleryTouchDeltaX, setGalleryTouchDeltaX] = useState(0);
-  const [cardTouchStartX, setCardTouchStartX] = useState<number | null>(null);
-  const [cardTouchStartY, setCardTouchStartY] = useState<number | null>(null);
-  const [cardSwipeOffset, setCardSwipeOffset] = useState(0);
-  const [cardSwipeActive, setCardSwipeActive] = useState(false);
-  const suppressClickUntilRef = useRef(0);
+  const [cardAction, setCardAction] = useState<"none" | "save" | "dismiss">("none");
+
   const { isSaved, toggle, unsave } = useSavedPosts();
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
@@ -69,12 +75,34 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     }
   }, [router, detailUrl, post]);
 
-  function navigateToPost(e: React.MouseEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+      }
+    };
+  }, []);
+
+  function scheduleSwipeVisual(offset: number) {
+    swipeOffsetRef.current = offset;
+    if (frameRef.current !== null) return;
+    frameRef.current = requestAnimationFrame(() => {
+      frameRef.current = null;
+      if (!articleRef.current) return;
+      articleRef.current.style.transform = `translateX(${swipeOffsetRef.current}px)`;
+    });
+  }
+
+  function resetSwipeVisual() {
+    scheduleSwipeVisual(0);
+    setCardAction("none");
+  }
+
+  function navigateToPost() {
     if (
       clicked ||
-      cardSwipeActive ||
-      Math.abs(cardSwipeOffset) > 8 ||
+      cardSwipeActiveRef.current ||
+      Math.abs(swipeOffsetRef.current) > 8 ||
       Date.now() < suppressClickUntilRef.current
     ) {
       return;
@@ -151,43 +179,50 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     if (isMultiImageGallery && target?.closest("[data-gallery-swipe='true']")) return;
     const touch = event.touches[0];
     if (!touch) return;
-    setCardTouchStartX(touch.clientX);
-    setCardTouchStartY(touch.clientY);
-    setCardSwipeOffset(0);
-    setCardSwipeActive(false);
+    cardTouchStartXRef.current = touch.clientX;
+    cardTouchStartYRef.current = touch.clientY;
+    cardSwipeActiveRef.current = false;
+    resetSwipeVisual();
   }
 
   function handleCardTouchMove(event: React.TouchEvent<HTMLElement>) {
-    if (cardTouchStartX === null || cardTouchStartY === null) return;
+    if (cardTouchStartXRef.current === null || cardTouchStartYRef.current === null) return;
     const touch = event.touches[0];
     if (!touch) return;
-    const deltaX = touch.clientX - cardTouchStartX;
-    const deltaY = touch.clientY - cardTouchStartY;
 
-    if (!cardSwipeActive && Math.abs(deltaY) > Math.abs(deltaX)) {
-      setCardTouchStartX(null);
-      setCardTouchStartY(null);
-      setCardSwipeOffset(0);
+    const deltaX = touch.clientX - cardTouchStartXRef.current;
+    const deltaY = touch.clientY - cardTouchStartYRef.current;
+
+    if (!cardSwipeActiveRef.current && Math.abs(deltaY) > Math.abs(deltaX)) {
+      cardTouchStartXRef.current = null;
+      cardTouchStartYRef.current = null;
+      resetSwipeVisual();
       return;
     }
 
-    if (!cardSwipeActive && Math.abs(deltaX) > 6) {
-      setCardSwipeActive(true);
+    if (!cardSwipeActiveRef.current && Math.abs(deltaX) > CARD_SWIPE_START) {
+      cardSwipeActiveRef.current = true;
     }
 
-    if (cardSwipeActive || Math.abs(deltaX) > 6) {
-      event.preventDefault();
-      setCardSwipeOffset(Math.max(-CARD_SWIPE_PREVIEW, Math.min(CARD_SWIPE_PREVIEW, deltaX)));
-    }
+    if (!cardSwipeActiveRef.current) return;
+
+    event.preventDefault();
+    const offset = Math.max(-CARD_SWIPE_PREVIEW, Math.min(CARD_SWIPE_PREVIEW, deltaX * 1.15));
+    scheduleSwipeVisual(offset);
+
+    if (offset > 0) setCardAction("save");
+    else if (offset < 0 && (onDismiss || isSaved(post.id))) setCardAction("dismiss");
+    else setCardAction("none");
   }
 
   function handleCardTouchEnd() {
-    const finalOffset = cardSwipeOffset;
-    const wasSwipe = cardSwipeActive;
-    setCardTouchStartX(null);
-    setCardTouchStartY(null);
-    setCardSwipeOffset(0);
-    setCardSwipeActive(false);
+    const finalOffset = swipeOffsetRef.current;
+    const wasSwipe = cardSwipeActiveRef.current;
+
+    cardTouchStartXRef.current = null;
+    cardTouchStartYRef.current = null;
+    cardSwipeActiveRef.current = false;
+    resetSwipeVisual();
 
     if (!wasSwipe) return;
 
@@ -204,10 +239,10 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   }
 
   function handleCardTouchCancel() {
-    setCardTouchStartX(null);
-    setCardTouchStartY(null);
-    setCardSwipeOffset(0);
-    setCardSwipeActive(false);
+    cardTouchStartXRef.current = null;
+    cardTouchStartYRef.current = null;
+    cardSwipeActiveRef.current = false;
+    resetSwipeVisual();
   }
 
   function handleToggleSaved(e: React.MouseEvent) {
@@ -224,8 +259,8 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   const saved = isSaved(post.id);
   const canDismiss = Boolean(onDismiss) || saved;
-  const showSaveAction = cardSwipeOffset > 0;
-  const showDismissAction = cardSwipeOffset < 0 && canDismiss;
+  const showSaveAction = cardAction === "save";
+  const showDismissAction = cardAction === "dismiss" && canDismiss;
 
   return (
     <div className="relative overflow-hidden rounded-lg">
@@ -247,10 +282,11 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
       </div>
 
       <article
+        ref={articleRef}
         className={`relative rounded-lg border border-gray-800 bg-gray-900 transition-[transform,opacity] duration-150 ${
           clicked ? "opacity-50" : ""
-        } ${cardTouchStartX === null ? "ease-out" : ""}`}
-        style={{ transform: `translateX(${cardSwipeOffset}px)`, touchAction: "pan-y" }}
+        }`}
+        style={{ touchAction: "pan-y", transform: "translateX(0px)" }}
         onTouchStart={handleCardTouchStart}
         onTouchMove={handleCardTouchMove}
         onTouchEnd={handleCardTouchEnd}
@@ -272,6 +308,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                 </div>
                 <div className="flex items-center gap-2">
                   <button
+                    type="button"
                     onClick={handleToggleSaved}
                     aria-label={saved ? "Remove from saved posts" : "Save post"}
                     title={saved ? "Saved" : "Save post"}
@@ -284,6 +321,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     {saved ? "\u2605" : "\u2606"}
                   </button>
                   <button
+                    type="button"
                     onClick={handleDismissClick}
                     aria-label={canDismiss ? "Remove post" : "Remove unavailable"}
                     title={canDismiss ? "Remove post" : "Remove unavailable"}
@@ -299,15 +337,13 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                 </div>
               </div>
 
-              <h2 className="mb-2 text-lg font-semibold leading-snug text-gray-100 sm:text-xl">
-                <a
-                  href={detailUrl}
-                  onClick={navigateToPost}
-                  className="cursor-pointer transition-colors hover:text-indigo-300"
-                >
-                  {post.title}
-                </a>
-              </h2>
+              <button
+                type="button"
+                onClick={navigateToPost}
+                className="mb-2 block text-left text-lg font-semibold leading-snug text-gray-100 transition-colors hover:text-indigo-300 sm:text-xl"
+              >
+                {post.title}
+              </button>
 
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 sm:text-base">
                 <span>by u/{post.author}</span>
@@ -317,14 +353,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             </div>
 
             {hasThumbnail && (
-              <a href={detailUrl} onClick={navigateToPost} className="mt-0.5 flex-shrink-0">
+              <button type="button" onClick={navigateToPost} className="mt-0.5 flex-shrink-0">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={post.thumbnail!}
                   alt=""
                   className="h-16 w-20 rounded bg-gray-800 object-cover sm:h-20 sm:w-28"
                 />
-              </a>
+              </button>
             )}
           </div>
 
@@ -358,9 +394,9 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                 style={{ transform: `translateX(${galleryTranslate})` }}
               >
                 {images.map((imageUrl, index) => (
-                  <a
+                  <button
                     key={`${post.id}-${index}`}
-                    href={detailUrl}
+                    type="button"
                     onClick={navigateToPost}
                     className="block w-full flex-shrink-0"
                   >
@@ -370,13 +406,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                       alt={post.title}
                       className="max-h-[480px] w-full object-contain sm:max-h-[680px]"
                     />
-                  </a>
+                  </button>
                 ))}
               </div>
 
               {isMultiImageGallery && (
                 <>
                   <button
+                    type="button"
                     onClick={prevImg}
                     className="absolute left-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80 md:flex"
                     aria-label="Previous image"
@@ -384,6 +421,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     {"\u2039"}
                   </button>
                   <button
+                    type="button"
                     onClick={nextImg}
                     className="absolute right-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80 md:flex"
                     aria-label="Next image"
@@ -397,6 +435,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     {images.map((_, index) => (
                       <button
                         key={index}
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           setImgIndex(index);
@@ -414,16 +453,16 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           )}
 
           <div className="mt-4 flex items-center gap-4">
-            <a
-              href={detailUrl}
+            <button
+              type="button"
               onClick={navigateToPost}
-              className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-indigo-300"
+              className="flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-indigo-300"
             >
               <span>{"\u{1F4AC}"}</span>
               <span>
                 {resolvedNumComments} comment{resolvedNumComments !== 1 ? "s" : ""}
               </span>
-            </a>
+            </button>
             <a
               href={redditUrl}
               target="_blank"
