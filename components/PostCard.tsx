@@ -1,12 +1,13 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
 import { RedditPost } from "@/lib/reddit";
 import { useSavedPosts } from "@/lib/saved-posts";
 
-const CARD_SWIPE_TRIGGER = 96;
-const CARD_SWIPE_PREVIEW = 140;
+const CARD_SWIPE_TRIGGER = 72;
+const CARD_SWIPE_PREVIEW = 120;
+const SWIPE_CLICK_SUPPRESSION_MS = 250;
 
 function timeAgo(utcSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - utcSeconds;
@@ -40,6 +41,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const [cardTouchStartY, setCardTouchStartY] = useState<number | null>(null);
   const [cardSwipeOffset, setCardSwipeOffset] = useState(0);
   const [cardSwipeActive, setCardSwipeActive] = useState(false);
+  const suppressClickUntilRef = useRef(0);
   const { isSaved, toggle, unsave } = useSavedPosts();
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
@@ -69,14 +71,22 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   function navigateToPost(e: React.MouseEvent) {
     e.preventDefault();
-    if (clicked || cardSwipeActive || Math.abs(cardSwipeOffset) > 8) return;
+    if (
+      clicked ||
+      cardSwipeActive ||
+      Math.abs(cardSwipeOffset) > 8 ||
+      Date.now() < suppressClickUntilRef.current
+    ) {
+      return;
+    }
     setClicked(true);
     router.push(detailUrl);
   }
 
-  async function handleDismiss() {
+  function handleDismiss() {
+    suppressClickUntilRef.current = Date.now() + SWIPE_CLICK_SUPPRESSION_MS;
     if (onDismiss) {
-      await onDismiss(post.id);
+      void onDismiss(post.id);
       return;
     }
 
@@ -86,6 +96,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   }
 
   function handleSaveToggle() {
+    suppressClickUntilRef.current = Date.now() + SWIPE_CLICK_SUPPRESSION_MS;
     toggle(post);
   }
 
@@ -98,6 +109,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     ? [post.url]
     : [];
   const hasThumbnail = !showLargeMedia && !!post.thumbnail;
+  const isMultiImageGallery = images.length > 1;
   const galleryTranslate = `calc(${-imgIndex * 100}% + ${galleryTouchDeltaX}px)`;
 
   function prevImg(e: React.MouseEvent) {
@@ -111,19 +123,19 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   }
 
   function handleGalleryTouchStart(event: React.TouchEvent<HTMLElement>) {
-    if (images.length < 2) return;
+    if (!isMultiImageGallery) return;
     setGalleryTouchStartX(event.touches[0]?.clientX ?? null);
     setGalleryTouchDeltaX(0);
   }
 
   function handleGalleryTouchMove(event: React.TouchEvent<HTMLElement>) {
-    if (galleryTouchStartX === null || images.length < 2) return;
+    if (galleryTouchStartX === null || !isMultiImageGallery) return;
     const currentX = event.touches[0]?.clientX ?? galleryTouchStartX;
     setGalleryTouchDeltaX(currentX - galleryTouchStartX);
   }
 
   function handleGalleryTouchEnd() {
-    if (galleryTouchStartX === null || images.length < 2) return;
+    if (galleryTouchStartX === null || !isMultiImageGallery) return;
     if (galleryTouchDeltaX <= -40) {
       setImgIndex((index) => (index + 1) % images.length);
     } else if (galleryTouchDeltaX >= 40) {
@@ -135,8 +147,8 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   function handleCardTouchStart(event: React.TouchEvent<HTMLElement>) {
     const target = event.target as HTMLElement | null;
-    if (target?.closest("[data-gallery-swipe='true']")) return;
-    if (target?.closest("button, a")) return;
+    if (target?.closest("button")) return;
+    if (isMultiImageGallery && target?.closest("[data-gallery-swipe='true']")) return;
     const touch = event.touches[0];
     if (!touch) return;
     setCardTouchStartX(touch.clientX);
@@ -159,31 +171,30 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
       return;
     }
 
-    if (Math.abs(deltaX) > 6) {
+    if (!cardSwipeActive && Math.abs(deltaX) > 6) {
       setCardSwipeActive(true);
     }
 
     if (cardSwipeActive || Math.abs(deltaX) > 6) {
+      event.preventDefault();
       setCardSwipeOffset(Math.max(-CARD_SWIPE_PREVIEW, Math.min(CARD_SWIPE_PREVIEW, deltaX)));
     }
   }
 
   function handleCardTouchEnd() {
-    if (!cardSwipeActive) {
-      setCardTouchStartX(null);
-      setCardTouchStartY(null);
-      setCardSwipeOffset(0);
-      return;
-    }
-
     const finalOffset = cardSwipeOffset;
+    const wasSwipe = cardSwipeActive;
     setCardTouchStartX(null);
     setCardTouchStartY(null);
     setCardSwipeOffset(0);
     setCardSwipeActive(false);
 
+    if (!wasSwipe) return;
+
+    suppressClickUntilRef.current = Date.now() + SWIPE_CLICK_SUPPRESSION_MS;
+
     if (finalOffset <= -CARD_SWIPE_TRIGGER) {
-      void handleDismiss();
+      handleDismiss();
       return;
     }
 
@@ -208,7 +219,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   function handleDismissClick(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    void handleDismiss();
+    handleDismiss();
   }
 
   const saved = isSaved(post.id);
@@ -239,7 +250,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
         className={`relative rounded-lg border border-gray-800 bg-gray-900 transition-[transform,opacity] duration-150 ${
           clicked ? "opacity-50" : ""
         } ${cardTouchStartX === null ? "ease-out" : ""}`}
-        style={{ transform: `translateX(${cardSwipeOffset}px)` }}
+        style={{ transform: `translateX(${cardSwipeOffset}px)`, touchAction: "pan-y" }}
         onTouchStart={handleCardTouchStart}
         onTouchMove={handleCardTouchMove}
         onTouchEnd={handleCardTouchEnd}
@@ -335,11 +346,12 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           {showLargeMedia && images.length > 0 && (
             <div
               className="relative mt-4 select-none overflow-hidden rounded-lg bg-gray-800"
-              data-gallery-swipe="true"
+              data-gallery-swipe={isMultiImageGallery ? "true" : undefined}
               onTouchStart={handleGalleryTouchStart}
               onTouchMove={handleGalleryTouchMove}
               onTouchEnd={handleGalleryTouchEnd}
               onTouchCancel={handleGalleryTouchEnd}
+              style={isMultiImageGallery ? { touchAction: "pan-y" } : undefined}
             >
               <div
                 className={`flex ${galleryTouchStartX === null ? "transition-transform duration-200 ease-out" : ""}`}
@@ -362,7 +374,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                 ))}
               </div>
 
-              {images.length > 1 && (
+              {isMultiImageGallery && (
                 <>
                   <button
                     onClick={prevImg}
