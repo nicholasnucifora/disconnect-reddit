@@ -45,6 +45,10 @@ export default function FeedClient() {
   }, []);
 
   const ready = subredditsReady && dismissedReady;
+  const visiblePostsKey = useMemo(
+    () => posts.slice(0, 24).map((post) => post.id).join(","),
+    [posts]
+  );
 
   const fetchPosts = useCallback(async () => {
     if (activeSubs.length === 0) {
@@ -71,6 +75,52 @@ export default function FeedClient() {
   useEffect(() => {
     if (ready) fetchPosts();
   }, [fetchPosts, ready]);
+
+  useEffect(() => {
+    if (!ready || posts.length === 0) return;
+
+    let cancelled = false;
+    const visiblePosts = posts.slice(0, 24).map((post) => ({
+      postId: post.id,
+      subreddit: post.subreddit,
+    }));
+
+    async function hydrateCommentCounts() {
+      try {
+        const res = await fetch("/api/reddit/comment-counts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ posts: visiblePosts }),
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+        const counts = data.counts ?? {};
+
+        if (cancelled) return;
+
+        setPosts((prev) =>
+          prev.map((post) => {
+            const correctedCount = counts[post.id];
+            if (typeof correctedCount !== "number" || correctedCount <= post.numComments) {
+              return post;
+            }
+            return { ...post, numComments: correctedCount };
+          })
+        );
+      } catch {
+        // best effort only
+      }
+    }
+
+    hydrateCommentCounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, visiblePostsKey]);
 
   async function dismissPost(postId: string) {
     setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));

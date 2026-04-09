@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RedditPost } from "@/lib/reddit";
 import PostCard from "./PostCard";
 
@@ -12,6 +12,10 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const visiblePostsKey = useMemo(
+    () => posts.slice(0, 24).map((post) => post.id).join(","),
+    [posts]
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -26,6 +30,52 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
       .finally(() => setLoading(false));
   }, [subreddit]);
+
+  useEffect(() => {
+    if (posts.length === 0) return;
+
+    let cancelled = false;
+    const visiblePosts = posts.slice(0, 24).map((post) => ({
+      postId: post.id,
+      subreddit: post.subreddit,
+    }));
+
+    async function hydrateCommentCounts() {
+      try {
+        const res = await fetch("/api/reddit/comment-counts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ posts: visiblePosts }),
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+        const counts = data.counts ?? {};
+
+        if (cancelled) return;
+
+        setPosts((prev) =>
+          prev.map((post) => {
+            const correctedCount = counts[post.id];
+            if (typeof correctedCount !== "number" || correctedCount <= post.numComments) {
+              return post;
+            }
+            return { ...post, numComments: correctedCount };
+          })
+        );
+      } catch {
+        // best effort only
+      }
+    }
+
+    hydrateCommentCounts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [visiblePostsKey]);
 
   return (
     <main className="min-h-screen bg-gray-950">

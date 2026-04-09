@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getCachedCommentCounts } from "@/lib/comment-count-cache";
 import { fetchSubredditPosts, RedditPost } from "@/lib/reddit";
 
 export const runtime = "edge";
@@ -60,8 +61,18 @@ export async function GET(request: NextRequest) {
       )
       .sort((a, b) => b.score - a.score);
 
+    const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
+    const withCachedCounts = merged.map((post) => {
+      const cached = cachedCounts.get(post.id);
+      if (!cached) return post;
+      return {
+        ...post,
+        numComments: Math.max(post.numComments, cached.numComments),
+      };
+    });
+
     return NextResponse.json(
-      { posts: merged, errors: errors.length > 0 ? errors : undefined },
+      { posts: withCachedCounts, errors: errors.length > 0 ? errors : undefined },
       {
         headers: {
           "Cache-Control": "public, s-maxage=300",
