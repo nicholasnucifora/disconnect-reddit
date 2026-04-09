@@ -52,6 +52,15 @@ export interface CommentTree {
   comments: CommentOrMore[];
 }
 
+export function countLoadedComments(comments: CommentOrMore[]): number {
+  let count = 0;
+  for (const comment of comments) {
+    if (comment.isMore) continue;
+    count += 1 + countLoadedComments(comment.replies);
+  }
+  return count;
+}
+
 const BROWSER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",

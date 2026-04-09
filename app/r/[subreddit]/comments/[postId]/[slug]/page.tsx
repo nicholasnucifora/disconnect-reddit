@@ -4,7 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Comment from "@/components/Comment";
 import RedditMarkdown from "@/components/RedditMarkdown";
-import { CommentOrMore, RedditPost } from "@/lib/reddit";
+import { CommentOrMore, countLoadedComments, RedditPost } from "@/lib/reddit";
 import { useSavedPosts } from "@/lib/saved-posts";
 
 function timeAgo(utcSeconds: number): string {
@@ -49,6 +49,10 @@ export default function PostPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const loadedCommentCount = countLoadedComments(comments);
+  const displayedCommentCount = post
+    ? Math.max(post.numComments, loadedCommentCount)
+    : loadedCommentCount;
 
   useEffect(() => {
     async function load() {
@@ -62,8 +66,28 @@ export default function PostPage() {
         }
 
         const data = await res.json();
-        if (data.post?.title || !post) setPost(data.post ?? post);
-        setComments(data.comments ?? []);
+        const nextComments = data.comments ?? [];
+        const nextPost = data.post ?? post;
+        const correctedCommentCount = Math.max(
+          nextPost?.numComments ?? 0,
+          countLoadedComments(nextComments)
+        );
+
+        if (nextPost) {
+          const correctedPost =
+            correctedCommentCount === nextPost.numComments
+              ? nextPost
+              : { ...nextPost, numComments: correctedCommentCount };
+
+          setPost(correctedPost);
+          try {
+            localStorage.setItem(`post:${postId}`, JSON.stringify(correctedPost));
+          } catch {
+            // storage unavailable
+          }
+        }
+
+        setComments(nextComments);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
@@ -254,7 +278,7 @@ export default function PostPage() {
 
             <section>
               <h2 className="mb-5 text-base font-semibold uppercase tracking-wide text-gray-400">
-                {post.numComments} Comment{post.numComments !== 1 ? "s" : ""}
+                {displayedCommentCount} Comment{displayedCommentCount !== 1 ? "s" : ""}
               </h2>
               {loading ? (
                 <div className="space-y-4">

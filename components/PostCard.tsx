@@ -35,6 +35,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const router = useRouter();
   const [clicked, setClicked] = useState(false);
   const [imgIndex, setImgIndex] = useState(0);
+  const [resolvedNumComments, setResolvedNumComments] = useState(post.numComments);
   const { isSaved, toggle } = useSavedPosts();
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
@@ -45,7 +46,18 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   useEffect(() => {
     router.prefetch(detailUrl);
     try {
-      localStorage.setItem(`post:${post.id}`, JSON.stringify(post));
+      const cachedRaw = localStorage.getItem(`post:${post.id}`);
+      const cachedPost = cachedRaw ? (JSON.parse(cachedRaw) as RedditPost) : null;
+      const mergedNumComments = Math.max(post.numComments, cachedPost?.numComments ?? 0);
+      setResolvedNumComments(mergedNumComments);
+      localStorage.setItem(
+        `post:${post.id}`,
+        JSON.stringify(
+          mergedNumComments === post.numComments
+            ? post
+            : { ...post, numComments: mergedNumComments }
+        )
+      );
     } catch {
       // storage unavailable
     }
@@ -62,6 +74,10 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const hasGallery = post.isGallery && post.galleryImages.length > 0;
   const isImage = !post.isGallery && isDirectImage(post.url, post.domain);
   const showLargeMedia = hasGallery || isImage;
+  const commentLabel =
+    resolvedNumComments > 0
+      ? `${resolvedNumComments} comment${resolvedNumComments !== 1 ? "s" : ""}`
+      : "View comments";
   const images = hasGallery
     ? post.galleryImages.map((galleryImage) => galleryImage.url)
     : isImage
@@ -223,9 +239,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-indigo-300"
           >
             <span>💬</span>
-            <span>
-              {post.numComments} comment{post.numComments !== 1 ? "s" : ""}
-            </span>
+            <span>{commentLabel}</span>
           </a>
           <a
             href={redditUrl}
