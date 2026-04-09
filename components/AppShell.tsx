@@ -11,31 +11,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const pathname = usePathname();
 
-  // Close drawer on navigation
   useEffect(() => {
     setSidebarOpen(false);
   }, [pathname]);
 
   return (
-    <>
-      <NavBar onMenuClick={() => setSidebarOpen((o) => !o)} />
+    <FocusGuard>
+      <>
+        <NavBar onMenuClick={() => setSidebarOpen((open) => !open)} />
 
-      {/* Backdrop — mobile only, behind drawer */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+        {sidebarOpen && (
+          <div
+            className="fixed inset-0 z-30 bg-black/50 md:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
 
-      <Sidebar open={sidebarOpen} />
+        <Sidebar open={sidebarOpen} />
 
-      {/* Main content — full width on mobile, offset by sidebar on desktop */}
-      <div className="md:pl-60 pt-16">
-        <FocusGuard>
+        <div className="pt-16 md:pl-60">
           <UsageGate>{children}</UsageGate>
-        </FocusGuard>
-      </div>
-    </>
+        </div>
+      </>
+    </FocusGuard>
   );
 }

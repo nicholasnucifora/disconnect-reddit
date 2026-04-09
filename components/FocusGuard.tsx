@@ -57,12 +57,18 @@ export default function FocusGuard({ children }: { children: React.ReactNode }) 
   }, [showOverlay]);
 
   return (
-    <div className="relative">
-      <div className={showOverlay ? "pointer-events-none select-none blur-2xl saturate-0" : ""}>
+    <div className="relative min-h-screen">
+      <div
+        className={
+          showOverlay
+            ? "pointer-events-none select-none blur-xl grayscale-[0.7] brightness-75"
+            : ""
+        }
+      >
         {children}
       </div>
       {showOverlay && (
-        <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-950/94 backdrop-blur-md">
+        <div className="absolute inset-0 z-30 flex items-center justify-center bg-gray-950/88 backdrop-blur-md">
           <div className="rounded-2xl border border-gray-800 bg-gray-900/95 px-6 py-5 text-center shadow-2xl">
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-gray-500">
               Focus required
