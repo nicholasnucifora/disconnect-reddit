@@ -201,7 +201,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       !!status &&
       !!currentContext &&
       document.visibilityState === "visible" &&
-      (status.countVisibleWithoutFocus || focusedRef.current) &&
+      focusedRef.current &&
       !status.isBlockedBySchedule &&
       !status.isLimitReached;
   }, [status, currentContext]);

@@ -59,7 +59,6 @@ export default function UsageSettingsClient() {
   const [message, setMessage] = useState<string | null>(null);
   const [timezone, setTimezone] = useState("Australia/Brisbane");
   const [dailyLimitMinutes, setDailyLimitMinutes] = useState("60");
-  const [countVisibleWithoutFocus, setCountVisibleWithoutFocus] = useState(true);
   const [schedules, setSchedules] = useState<UsageScheduleWithWindows[]>([]);
 
   useEffect(() => {
@@ -74,7 +73,6 @@ export default function UsageSettingsClient() {
         if (ignore) return;
         setTimezone(payload.timezone);
         setDailyLimitMinutes(toMinutes(payload.dailyLimitSeconds) || "60");
-        setCountVisibleWithoutFocus(payload.countVisibleWithoutFocus !== false);
         setSchedules(payload.schedules);
       } finally {
         if (!ignore) setLoading(false);
@@ -99,7 +97,6 @@ export default function UsageSettingsClient() {
       const payload: UsageSettingsPayload = {
         timezone,
         dailyLimitSeconds: fromMinutes(dailyLimitMinutes) ?? 3600,
-        countVisibleWithoutFocus,
         schedules: schedules.map((schedule, index) => ({
           ...schedule,
           priority: schedules.length - index,
@@ -117,7 +114,6 @@ export default function UsageSettingsClient() {
       const saved = (await response.json()) as UsageSettingsPayload;
       setTimezone(saved.timezone);
       setDailyLimitMinutes(toMinutes(saved.dailyLimitSeconds) || "60");
-      setCountVisibleWithoutFocus(saved.countVisibleWithoutFocus !== false);
       setSchedules(saved.schedules);
       await refreshStatus();
       setMessage("Saved.");
@@ -183,22 +179,6 @@ export default function UsageSettingsClient() {
                   </div>
                 </div>
               </div>
-              <label className="mt-5 flex items-start gap-3 rounded-2xl border border-gray-800 bg-gray-950/70 p-4">
-                <input
-                  type="checkbox"
-                  checked={countVisibleWithoutFocus}
-                  onChange={(event) => setCountVisibleWithoutFocus(event.target.checked)}
-                  className="mt-1"
-                />
-                <span>
-                  <span className="block text-sm font-medium text-white">
-                    Keep counting while visible on another screen
-                  </span>
-                  <span className="mt-1 block text-sm text-gray-400">
-                    On by default. Time keeps counting when the app is still visible but another window has focus. If the tab or window is minimized or hidden, it still stops.
-                  </span>
-                </span>
-              </label>
             </section>
 
             <section className="mt-8 rounded-3xl border border-gray-800 bg-gray-900/70 p-6">

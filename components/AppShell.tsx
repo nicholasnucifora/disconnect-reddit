@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import NavBar from "./NavBar";
 import Sidebar from "./Sidebar";
+import FocusGuard from "./FocusGuard";
 import UsageGate from "./UsageGate";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
@@ -31,7 +32,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
       {/* Main content — full width on mobile, offset by sidebar on desktop */}
       <div className="md:pl-60 pt-16">
-        <UsageGate>{children}</UsageGate>
+        <FocusGuard>
+          <UsageGate>{children}</UsageGate>
+        </FocusGuard>
       </div>
     </>
   );
