@@ -20,6 +20,7 @@ export default function FeedClient() {
   const [loading, setLoading] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [feedCleared, setFeedCleared] = useState(false);
   const [dismissedReady, setDismissedReady] = useState(false);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
@@ -71,12 +72,17 @@ export default function FeedClient() {
   }, [activeFeedId, activeSubs, dismissedIds]);
 
   useEffect(() => {
-    if (ready) fetchPosts();
-  }, [fetchPosts, ready]);
+    if (ready && !feedCleared) fetchPosts();
+  }, [feedCleared, fetchPosts, ready]);
+
+  useEffect(() => {
+    setFeedCleared(false);
+  }, [activeFeedId]);
 
   async function refreshPreparedFeed() {
     setRefreshing(true);
     setRefreshMessage(null);
+    setFeedCleared(false);
     try {
       const res = await fetch("/api/reddit/precompute", {
         method: "POST",
@@ -117,7 +123,9 @@ export default function FeedClient() {
         throw new Error(body.error ?? "Failed to clear prepared feed");
       }
 
-      await fetchPosts();
+      setPosts([]);
+      setFetchErrors([]);
+      setFeedCleared(true);
       setRefreshMessage(`Cleared ${body.deletedSnapshots ?? 0} stored snapshots for this feed.`);
     } catch (err) {
       setRefreshMessage(err instanceof Error ? err.message : "Failed to clear prepared feed");
@@ -216,7 +224,9 @@ export default function FeedClient() {
         </p>
       ) : posts.length === 0 ? (
         <div className="py-16 space-y-2">
-          <p className="text-center text-gray-500 text-sm">No posts found</p>
+          <p className="text-center text-gray-500 text-sm">
+            {feedCleared ? "Feed data cleared. Refresh to rebuild this snapshot." : "No posts found"}
+          </p>
           {fetchErrors.length > 0 && (
             <div className="text-xs text-red-400 bg-red-950/40 rounded p-3 space-y-1">
               {fetchErrors.map((e, i) => <p key={i}>{e}</p>)}
