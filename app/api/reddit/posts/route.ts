@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCachedCommentCounts } from "@/lib/comment-count-cache";
+import {
+  getCachedCommentCounts,
+  isCommentCountStale,
+  upsertCommentCounts,
+} from "@/lib/comment-count-cache";
+import { refreshCommentCounts } from "@/lib/comment-count-refresh";
 import { fetchSubredditPosts, RedditPost } from "@/lib/reddit";
 
 export const runtime = "edge";
@@ -62,6 +67,31 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.score - a.score);
 
     const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
+    const postsToRefresh = merged
+      .slice(0, 24)
+      .filter((post) => {
+        const cached = cachedCounts.get(post.id);
+        return !cached || isCommentCountStale(cached);
+      })
+      .map((post) => ({
+        postId: post.id,
+        subreddit: post.subreddit,
+      }));
+
+    const refreshedCounts = await refreshCommentCounts(postsToRefresh, 4);
+    if (refreshedCounts.length > 0) {
+      await upsertCommentCounts(refreshedCounts);
+      for (const entry of refreshedCounts) {
+        cachedCounts.set(entry.postId, {
+          postId: entry.postId,
+          subreddit: entry.subreddit,
+          numComments: entry.numComments,
+          checkedAt: new Date().toISOString(),
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+      }
+    }
+
     const withCachedCounts = merged.map((post) => {
       const cached = cachedCounts.get(post.id);
       if (!cached) return post;

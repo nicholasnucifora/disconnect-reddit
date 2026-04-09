@@ -5,33 +5,13 @@ import {
   isCommentCountStale,
   upsertCommentCounts,
 } from "@/lib/comment-count-cache";
-import { fetchPostCommentCount } from "@/lib/reddit";
+import { refreshCommentCounts } from "@/lib/comment-count-refresh";
 
 export const runtime = "edge";
 
 interface CommentCountRequestPost {
   postId: string;
   subreddit: string;
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  mapper: (item: T) => Promise<R>
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let index = 0;
-
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-      while (index < items.length) {
-        const currentIndex = index++;
-        results[currentIndex] = await mapper(items[currentIndex]);
-      }
-    })
-  );
-
-  return results;
 }
 
 export async function POST(request: NextRequest) {
@@ -55,14 +35,7 @@ export async function POST(request: NextRequest) {
       return !cachedEntry || isCommentCountStale(cachedEntry);
     });
 
-    const refreshed = await mapWithConcurrency(toRefresh, 4, async (post) => {
-      const numComments = await fetchPostCommentCount(post.postId);
-      return {
-        postId: post.postId,
-        subreddit: post.subreddit,
-        numComments,
-      };
-    });
+    const refreshed = await refreshCommentCounts(toRefresh, 4);
 
     if (refreshed.length > 0) {
       await upsertCommentCounts(refreshed);
