@@ -33,6 +33,7 @@ export default function Sidebar({ open = false }: SidebarProps) {
 
   const pathname = usePathname();
   const activeSubreddit = pathname.match(/^\/r\/([^/]+)/)?.[1]?.toLowerCase();
+  const isSavedPostsActive = pathname === "/saved-posts";
   const activeFeed = feeds.find((feed) => feed.id === activeFeedId) ?? feeds[0];
 
   function handleAdd() {
@@ -89,6 +90,18 @@ export default function Sidebar({ open = false }: SidebarProps) {
       } md:translate-x-0`}
     >
       <nav className="flex-1 space-y-1 p-4">
+        <Link
+          href="/saved-posts"
+          className={`mb-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
+            isSavedPostsActive
+              ? "bg-amber-950/50 text-amber-200"
+              : "text-gray-300 hover:bg-gray-900 hover:text-white"
+          }`}
+        >
+          <span className="text-base leading-none">★</span>
+          <span>Saved Posts</span>
+        </Link>
+
         <p className="px-2 pb-1 text-sm uppercase tracking-widest text-gray-600">Feeds</p>
 
         {feeds.map((feed) => {

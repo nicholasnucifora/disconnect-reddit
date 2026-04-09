@@ -1,10 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { USERNAME } from "@/lib/config";
 import { useUsage } from "@/lib/usage-provider";
 
 interface NavBarProps {
@@ -12,14 +9,9 @@ interface NavBarProps {
 }
 
 export default function NavBar({ onMenuClick }: NavBarProps) {
-  const pathname = usePathname();
-  const router = useRouter();
   const { headerLabel, headerTone, progressPercent } = useUsage();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
-
-  const detailMatch = pathname.match(/^\/r\/[^/]+\/comments\/([^/]+)\//);
-  const postId = detailMatch?.[1] ?? null;
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -27,35 +19,10 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
         setOpen(false);
       }
     }
+
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
-
-  async function keepInFeed() {
-    if (!postId) return;
-
-    const supabase = createClient();
-    void supabase
-      .from("dismissed_posts")
-      .delete()
-      .eq("username", USERNAME)
-      .eq("post_id", postId);
-
-    try {
-      const local: string[] = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
-      const updated = local.filter((id) => id !== postId);
-      sessionStorage.setItem("localDismissed", JSON.stringify(updated));
-
-      const cached = sessionStorage.getItem(`post:${postId}`);
-      if (cached) {
-        window.dispatchEvent(new CustomEvent("undismissPost", { detail: JSON.parse(cached) }));
-      }
-    } catch {
-      // sessionStorage unavailable
-    }
-
-    router.back();
-  }
 
   const pillTone =
     headerTone === "danger"
@@ -93,7 +60,7 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
           </button>
           <Link
             href="/"
-            className="font-bold text-2xl tracking-tight text-white transition-colors hover:text-teal-400"
+            className="text-2xl font-bold tracking-tight text-white transition-colors hover:text-teal-400"
           >
             Disconnected Reddit
           </Link>
@@ -151,16 +118,7 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
           </div>
         </div>
 
-        <div className="flex justify-end">
-          {postId && (
-            <button
-              onClick={keepInFeed}
-              className="rounded border border-teal-800 px-4 py-1.5 text-base text-teal-400 transition-colors hover:border-teal-600 hover:text-teal-300"
-            >
-              Keep in feed
-            </button>
-          )}
-        </div>
+        <div />
       </div>
     </nav>
   );
