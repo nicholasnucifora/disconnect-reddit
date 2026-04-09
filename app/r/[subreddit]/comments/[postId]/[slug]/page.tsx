@@ -57,6 +57,8 @@ export default function PostPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryTouchStartX, setGalleryTouchStartX] = useState<number | null>(null);
+  const [galleryTouchDeltaX, setGalleryTouchDeltaX] = useState(0);
   const loadedCommentCount = countLoadedComments(comments);
   const displayedCommentCount = post
     ? Math.max(post.numComments, loadedCommentCount)
@@ -116,14 +118,65 @@ export default function PostPage() {
     toggle(post);
   }
 
+  function handleBack() {
+    if (typeof window === "undefined") {
+      router.push("/");
+      return;
+    }
+
+    if (window.history.length > 1) {
+      router.back();
+      return;
+    }
+
+    if (document.referrer) {
+      try {
+        const referrerUrl = new URL(document.referrer);
+        if (referrerUrl.origin === window.location.origin) {
+          router.push(`${referrerUrl.pathname}${referrerUrl.search}${referrerUrl.hash}`);
+          return;
+        }
+      } catch {
+        // Ignore malformed referrers and fall through to the default route.
+      }
+    }
+
+    router.push("/");
+  }
+
+  function handleGalleryTouchStart(event: React.TouchEvent<HTMLElement>) {
+    if (!post?.isGallery || post.galleryImages.length < 2) return;
+    setGalleryTouchStartX(event.touches[0]?.clientX ?? null);
+    setGalleryTouchDeltaX(0);
+  }
+
+  function handleGalleryTouchMove(event: React.TouchEvent<HTMLElement>) {
+    if (galleryTouchStartX === null || !post?.isGallery || post.galleryImages.length < 2) return;
+    const currentX = event.touches[0]?.clientX ?? galleryTouchStartX;
+    setGalleryTouchDeltaX(currentX - galleryTouchStartX);
+  }
+
+  function handleGalleryTouchEnd() {
+    if (galleryTouchStartX === null || !post?.isGallery || post.galleryImages.length < 2) return;
+    if (galleryTouchDeltaX <= -40) {
+      setGalleryIndex((index) => (index + 1) % post.galleryImages.length);
+    } else if (galleryTouchDeltaX >= 40) {
+      setGalleryIndex(
+        (index) => (index - 1 + post.galleryImages.length) % post.galleryImages.length
+      );
+    }
+    setGalleryTouchStartX(null);
+    setGalleryTouchDeltaX(0);
+  }
+
   return (
     <main className="min-h-screen bg-gray-950">
-      <div className="mx-auto max-w-4xl px-4 py-8">
+      <div className="mx-auto max-w-4xl px-4 py-6 sm:py-8">
         <button
-          onClick={() => router.back()}
+          onClick={handleBack}
           className="mb-6 flex items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-gray-200"
         >
-          ← Back
+          â† Back
         </button>
 
         {!post && loading && (
@@ -136,7 +189,7 @@ export default function PostPage() {
 
         {post && (
           <>
-            <article className="mb-8 rounded-lg border border-gray-800 bg-gray-900 p-7">
+            <article className="mb-8 rounded-lg border border-gray-800 bg-gray-900 p-4 sm:p-7">
               <div className="mb-2.5 flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <span className="text-sm font-semibold uppercase tracking-wide text-indigo-400">
@@ -158,11 +211,11 @@ export default function PostPage() {
                       : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
                   }`}
                 >
-                  {saved ? "★" : "☆"}
+                  {saved ? "â˜…" : "â˜†"}
                 </button>
               </div>
 
-              <h1 className="mb-4 text-3xl font-bold leading-snug text-gray-100">
+              <h1 className="mb-4 text-2xl font-bold leading-snug text-gray-100 sm:text-3xl">
                 {post.title || slug.replace(/-/g, " ") || "Post"}
               </h1>
 
@@ -173,12 +226,18 @@ export default function PostPage() {
               </div>
 
               {post.isGallery && post.galleryImages.length > 0 && (
-                <div className="relative mb-4 select-none overflow-hidden rounded-lg bg-gray-800">
+                <div
+                  className="relative mb-4 select-none overflow-hidden rounded-lg bg-gray-800"
+                  onTouchStart={handleGalleryTouchStart}
+                  onTouchMove={handleGalleryTouchMove}
+                  onTouchEnd={handleGalleryTouchEnd}
+                  onTouchCancel={handleGalleryTouchEnd}
+                >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={post.galleryImages[galleryIndex].url}
                     alt={`${post.title} (${galleryIndex + 1} of ${post.galleryImages.length})`}
-                    className="max-h-[760px] w-full object-contain"
+                    className="max-h-[520px] w-full object-contain sm:max-h-[760px]"
                   />
                   {post.galleryImages.length > 1 && (
                     <>
@@ -189,19 +248,19 @@ export default function PostPage() {
                               (index - 1 + post.galleryImages.length) % post.galleryImages.length
                           )
                         }
-                        className="absolute left-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80"
+                        className="absolute left-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80 md:flex"
                         aria-label="Previous image"
                       >
-                        ‹
+                        â€¹
                       </button>
                       <button
                         onClick={() =>
                           setGalleryIndex((index) => (index + 1) % post.galleryImages.length)
                         }
-                        className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80"
+                        className="absolute right-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80 md:flex"
                         aria-label="Next image"
                       >
-                        ›
+                        â€º
                       </button>
                       <div className="absolute right-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-xs text-white">
                         {galleryIndex + 1} / {post.galleryImages.length}
@@ -217,7 +276,7 @@ export default function PostPage() {
                   <img
                     src={post.url}
                     alt={post.title}
-                    className="mb-5 max-h-[760px] w-full rounded-lg bg-gray-800 object-contain"
+                    className="mb-5 max-h-[520px] w-full rounded-lg bg-gray-800 object-contain sm:max-h-[760px]"
                   />
                 </a>
               )}
@@ -247,9 +306,9 @@ export default function PostPage() {
                   rel="noopener noreferrer"
                   className="mb-5 flex items-center gap-2 rounded-lg bg-gray-800 px-4 py-3 text-base text-indigo-400 transition-colors hover:text-indigo-300"
                 >
-                  <span className="flex-shrink-0">▶</span>
+                  <span className="flex-shrink-0">â–¶</span>
                   <span>Watch video on Reddit</span>
-                  <span className="flex-shrink-0 text-gray-500">↗</span>
+                  <span className="flex-shrink-0 text-gray-500">â†—</span>
                 </a>
               )}
 
@@ -264,9 +323,9 @@ export default function PostPage() {
                     rel="noopener noreferrer"
                     className="mb-5 flex items-center gap-2 truncate rounded-lg bg-gray-800 px-4 py-3 text-base text-indigo-400 transition-colors hover:text-indigo-300"
                   >
-                    <span className="flex-shrink-0">🔗</span>
+                    <span className="flex-shrink-0">ðŸ”—</span>
                     <span className="truncate">{post.url}</span>
-                    <span className="flex-shrink-0 text-gray-500">↗</span>
+                    <span className="flex-shrink-0 text-gray-500">â†—</span>
                   </a>
                 )}
 
@@ -281,7 +340,7 @@ export default function PostPage() {
                   rel="noopener noreferrer"
                   className="text-sm text-gray-500 transition-colors hover:text-gray-300"
                 >
-                  Open on Reddit ↗
+                  Open on Reddit â†—
                 </a>
               </div>
             </article>

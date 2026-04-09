@@ -31,6 +31,8 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const [clicked, setClicked] = useState(false);
   const [imgIndex, setImgIndex] = useState(0);
   const [resolvedNumComments, setResolvedNumComments] = useState(post.numComments);
+  const [touchStartX, setTouchStartX] = useState<number | null>(null);
+  const [touchDeltaX, setTouchDeltaX] = useState(0);
   const { isSaved, toggle } = useSavedPosts();
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
@@ -86,6 +88,29 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     setImgIndex((index) => (index + 1) % images.length);
   }
 
+  function handleGalleryTouchStart(event: React.TouchEvent<HTMLElement>) {
+    if (images.length < 2) return;
+    setTouchStartX(event.touches[0]?.clientX ?? null);
+    setTouchDeltaX(0);
+  }
+
+  function handleGalleryTouchMove(event: React.TouchEvent<HTMLElement>) {
+    if (touchStartX === null || images.length < 2) return;
+    const currentX = event.touches[0]?.clientX ?? touchStartX;
+    setTouchDeltaX(currentX - touchStartX);
+  }
+
+  function handleGalleryTouchEnd() {
+    if (touchStartX === null || images.length < 2) return;
+    if (touchDeltaX <= -40) {
+      setImgIndex((index) => (index + 1) % images.length);
+    } else if (touchDeltaX >= 40) {
+      setImgIndex((index) => (index - 1 + images.length) % images.length);
+    }
+    setTouchStartX(null);
+    setTouchDeltaX(0);
+  }
+
   function handleToggleSaved(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -100,10 +125,10 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
         clicked ? "opacity-50" : ""
       }`}
     >
-      <div className="p-6">
-        <div className="flex items-start gap-4">
+      <div className="p-4 sm:p-6">
+        <div className="flex items-start gap-3 sm:gap-4">
           <div className="min-w-0 flex-1">
-            <div className="mb-1.5 flex items-start justify-between gap-4">
+            <div className="mb-1.5 flex items-start justify-between gap-3 sm:gap-4">
               <div className="min-w-0">
                 <span className="text-sm font-semibold uppercase tracking-wide text-indigo-400">
                   r/{post.subreddit}
@@ -124,11 +149,11 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
                 }`}
               >
-                {saved ? "★" : "☆"}
+                {saved ? "â˜…" : "â˜†"}
               </button>
             </div>
 
-            <h2 className="mb-2 text-xl font-semibold leading-snug text-gray-100">
+            <h2 className="mb-2 text-lg font-semibold leading-snug text-gray-100 sm:text-xl">
               <a
                 href={detailUrl}
                 onClick={navigateToPost}
@@ -138,7 +163,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
               </a>
             </h2>
 
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base text-gray-500">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500 sm:text-base">
               <span>by u/{post.author}</span>
               <span>{timeAgo(post.createdUtc)}</span>
               {!post.isSelf && <span className="italic text-gray-600">{post.domain}</span>}
@@ -151,7 +176,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
               <img
                 src={post.thumbnail!}
                 alt=""
-                className="h-20 w-28 rounded bg-gray-800 object-cover"
+                className="h-16 w-20 rounded bg-gray-800 object-cover sm:h-20 sm:w-28"
               />
             </a>
           )}
@@ -173,13 +198,19 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
         )}
 
         {showLargeMedia && images.length > 0 && (
-          <div className="relative mt-4 select-none overflow-hidden rounded-lg bg-gray-800">
+          <div
+            className="relative mt-4 select-none overflow-hidden rounded-lg bg-gray-800"
+            onTouchStart={handleGalleryTouchStart}
+            onTouchMove={handleGalleryTouchMove}
+            onTouchEnd={handleGalleryTouchEnd}
+            onTouchCancel={handleGalleryTouchEnd}
+          >
             <a href={detailUrl} onClick={navigateToPost} className="block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={images[imgIndex]}
                 alt={post.title}
-                className="max-h-[680px] w-full object-contain"
+                className="max-h-[480px] w-full object-contain sm:max-h-[680px]"
               />
             </a>
 
@@ -187,19 +218,19 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
               <>
                 <button
                   onClick={prevImg}
-                  className="absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80"
+                  className="absolute left-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80 md:flex"
                   aria-label="Previous image"
                 >
-                  ‹
+                  â€¹
                 </button>
                 <button
                   onClick={nextImg}
-                  className="absolute right-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80"
+                  className="absolute right-2 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-2xl text-white transition-colors hover:bg-black/80 md:flex"
                   aria-label="Next image"
                 >
-                  ›
+                  â€º
                 </button>
-                <div className="absolute right-3 top-3 rounded-full bg-black/60 px-3 py-1 text-sm text-white">
+                <div className="absolute right-3 top-3 rounded-full bg-black/60 px-2.5 py-1 text-xs text-white sm:px-3 sm:text-sm">
                   {imgIndex + 1} / {images.length}
                 </div>
                 <div className="absolute bottom-3 left-1/2 flex -translate-x-1/2 gap-2">
@@ -228,7 +259,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             onClick={navigateToPost}
             className="flex cursor-pointer items-center gap-1.5 text-sm text-gray-400 transition-colors hover:text-indigo-300"
           >
-            <span>💬</span>
+            <span>ðŸ’¬</span>
             <span>
               {resolvedNumComments} comment{resolvedNumComments !== 1 ? "s" : ""}
             </span>
@@ -239,7 +270,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             rel="noopener noreferrer"
             className="text-sm text-gray-500 transition-colors hover:text-gray-300"
           >
-            Open on Reddit ↗
+            Open on Reddit â†—
           </a>
         </div>
       </div>

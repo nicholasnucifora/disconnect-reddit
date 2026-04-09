@@ -44,12 +44,12 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
         };
 
   return (
-    <nav className="fixed left-0 right-0 top-0 z-50 h-16 border-b border-gray-800 bg-gray-950">
-      <div className="grid h-full grid-cols-[auto_1fr_auto] items-center gap-4 px-5">
-        <div className="flex items-center gap-3">
+    <nav className="fixed left-0 right-0 top-0 z-50 h-14 border-b border-gray-800 bg-gray-950 md:h-16">
+      <div className="grid h-full grid-cols-[auto_1fr] items-center gap-3 px-3 sm:px-4 md:grid-cols-[auto_1fr_auto] md:gap-4 md:px-5">
+        <div className="flex min-w-0 items-center gap-2 md:gap-3">
           <button
             onClick={onMenuClick}
-            className="p-1 text-gray-400 transition-colors hover:text-gray-100 md:hidden"
+            className="flex-shrink-0 p-1 text-gray-400 transition-colors hover:text-gray-100 md:hidden"
             aria-label="Toggle menu"
           >
             <svg width="24" height="24" viewBox="0 0 20 20" fill="currentColor">
@@ -60,34 +60,34 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
           </button>
           <Link
             href="/"
-            className="text-2xl font-bold tracking-tight text-white transition-colors hover:text-teal-400"
+            className="min-w-0 truncate text-base font-bold tracking-tight text-white transition-colors hover:text-teal-400 sm:text-lg md:text-2xl"
           >
             Disconnected Reddit
           </Link>
         </div>
 
-        <div className="flex justify-end pr-8 md:pr-20">
-          <div className="relative w-full max-w-[17rem]" ref={menuRef}>
+        <div className="flex min-w-0 justify-end">
+          <div className="relative w-full max-w-[11rem] sm:max-w-[13rem] md:max-w-[17rem]" ref={menuRef}>
             <button
               onClick={() => setOpen((value) => !value)}
-              className={`w-full rounded-xl border px-3 py-1.5 text-left transition-colors ${pillTone.outer}`}
+              className={`w-full rounded-lg border px-2.5 py-1.5 text-left transition-colors md:rounded-xl md:px-3 ${pillTone.outer}`}
               aria-haspopup="menu"
               aria-expanded={open}
             >
-              <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center justify-between gap-2 md:gap-4">
                 <div className="min-w-0">
-                  <span className="truncate text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-500">
+                  <span className="truncate text-[10px] font-semibold uppercase tracking-[0.14em] text-gray-500 md:text-[11px] md:tracking-[0.18em]">
                     Reddit today
                   </span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-sm font-medium ${pillTone.text}`}>
+                <div className="flex min-w-0 items-center gap-1.5 md:gap-2">
+                  <span className={`truncate text-xs font-medium ${pillTone.text} sm:text-sm`}>
                     {headerLabel ?? "Loading"}
                   </span>
-                  <span className="text-sm text-gray-500">☰</span>
+                  <span className="flex-shrink-0 text-xs text-gray-500 sm:text-sm">☰</span>
                 </div>
               </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-800">
+              <div className="mt-2 h-1 overflow-hidden rounded-full bg-gray-800 md:mt-3 md:h-1.5">
                 <div
                   className={`h-full rounded-full transition-all duration-300 ${pillTone.bar}`}
                   style={{ width: `${progressPercent}%` }}
@@ -118,7 +118,7 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
           </div>
         </div>
 
-        <div />
+        <div className="hidden md:block" />
       </div>
     </nav>
   );

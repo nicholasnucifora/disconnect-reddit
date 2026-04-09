@@ -8,9 +8,10 @@ import { useFeeds } from "@/lib/feeds-context";
 
 interface SidebarProps {
   open?: boolean;
+  onClose?: () => void;
 }
 
-export default function Sidebar({ open = false }: SidebarProps) {
+export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const router = useRouter();
   const { subreddits, addSubreddit, removeSubreddit } = useSubreddits();
   const {
@@ -32,6 +33,8 @@ export default function Sidebar({ open = false }: SidebarProps) {
   const [newFeedName, setNewFeedName] = useState("");
   const [dragging, setDragging] = useState<{ sub: string; fromFeedId: string } | null>(null);
   const [dragOverFeedId, setDragOverFeedId] = useState<string | null>(null);
+  const [sidebarDragStartX, setSidebarDragStartX] = useState<number | null>(null);
+  const [sidebarDragOffset, setSidebarDragOffset] = useState(0);
 
   const pathname = usePathname();
   const isHomeRoute = pathname === "/";
@@ -93,11 +96,37 @@ export default function Sidebar({ open = false }: SidebarProps) {
     router.push("/");
   }
 
+  function handleSidebarTouchStart(event: React.TouchEvent<HTMLElement>) {
+    if (!open) return;
+    setSidebarDragStartX(event.touches[0]?.clientX ?? null);
+    setSidebarDragOffset(0);
+  }
+
+  function handleSidebarTouchMove(event: React.TouchEvent<HTMLElement>) {
+    if (!open || sidebarDragStartX === null) return;
+    const currentX = event.touches[0]?.clientX ?? sidebarDragStartX;
+    const nextOffset = Math.min(0, currentX - sidebarDragStartX);
+    setSidebarDragOffset(nextOffset);
+  }
+
+  function handleSidebarTouchEnd() {
+    if (!open) return;
+    const shouldClose = sidebarDragOffset <= -80;
+    setSidebarDragStartX(null);
+    setSidebarDragOffset(0);
+    if (shouldClose) onClose?.();
+  }
+
   return (
     <aside
-      className={`fixed left-0 top-16 z-40 flex h-[calc(100vh-64px)] w-72 flex-col overflow-y-auto border-r border-gray-800 bg-gray-950 transition-transform duration-200 md:w-60 ${
+      className={`fixed left-0 top-14 z-40 flex h-[calc(100vh-56px)] w-72 flex-col overflow-y-auto border-r border-gray-800 bg-gray-950 transition-transform duration-200 md:top-16 md:h-[calc(100vh-64px)] md:w-60 ${
         open ? "translate-x-0" : "-translate-x-full"
       } md:translate-x-0`}
+      style={open && sidebarDragOffset !== 0 ? { transform: `translateX(${sidebarDragOffset}px)` } : undefined}
+      onTouchStart={handleSidebarTouchStart}
+      onTouchMove={handleSidebarTouchMove}
+      onTouchEnd={handleSidebarTouchEnd}
+      onTouchCancel={handleSidebarTouchEnd}
     >
       <nav className="flex-1 space-y-1 p-4">
         <Link
