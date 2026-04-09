@@ -157,7 +157,10 @@ async function buildFeedPosts(
       subreddit: post.subreddit,
     }));
 
-  const refreshResult = await refreshCommentCounts(postsToRefresh, 4);
+  const refreshResult = await refreshCommentCounts(
+    postsToRefresh,
+    options.forceRefresh ? 1 : 4
+  );
   if (refreshResult.refreshed.length > 0) {
     await upsertCommentCounts(refreshResult.refreshed);
     for (const entry of refreshResult.refreshed) {

@@ -243,6 +243,7 @@ export default function FeedClient() {
             {refreshFailures.slice(0, 8).map((failure) => (
               <p key={failure.postId}>
                 r/{failure.subreddit} {failure.title ? `- ${failure.title}` : `- ${failure.postId}`} ({failure.postId})
+                : {failure.error}
               </p>
             ))}
           </div>
