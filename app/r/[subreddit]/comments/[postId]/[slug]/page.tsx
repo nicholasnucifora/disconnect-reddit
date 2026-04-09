@@ -15,11 +15,6 @@ function timeAgo(utcSeconds: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function formatScore(score: number): string {
-  if (score >= 1000) return `${(score / 1000).toFixed(1)}k`;
-  return String(score);
-}
-
 function isImageUrl(url: string, domain: string): boolean {
   return (
     /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(url) ||
@@ -173,7 +168,6 @@ export default function PostPage() {
 
               <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-500">
                 <span>by u/{post.author}</span>
-                <span>▲ {formatScore(post.score)}</span>
                 <span>{timeAgo(post.createdUtc)}</span>
                 {!post.isSelf && post.domain && <span className="italic">{post.domain}</span>}
               </div>

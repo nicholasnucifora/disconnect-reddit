@@ -118,7 +118,10 @@ function mergePosts(posts: RedditPost[]): RedditPost[] {
         p.title !== "[deleted]" &&
         p.title !== "[removed]"
     )
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      if (b.numComments !== a.numComments) return b.numComments - a.numComments;
+      return b.createdUtc - a.createdUtc;
+    });
 }
 
 interface BuildFeedPostsOptions {

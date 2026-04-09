@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
     // Keep only posts from the last 3 days
     const threeDaysAgo = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
 
-    // Filter out stickied, deleted, removed, and old posts; sort by score descending
+    // Filter out stickied, deleted, removed, and old posts; sort by comment activity then recency
     const merged = posts
       .filter((p) => !p.stickied)
       .filter((p) => p.createdUtc >= threeDaysAgo)
@@ -64,7 +64,10 @@ export async function GET(request: NextRequest) {
           p.title !== "[deleted]" &&
           p.title !== "[removed]"
       )
-      .sort((a, b) => b.score - a.score);
+      .sort((a, b) => {
+        if (b.numComments !== a.numComments) return b.numComments - a.numComments;
+        return b.createdUtc - a.createdUtc;
+      });
 
     const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
     const postsToRefresh = merged

@@ -13,11 +13,6 @@ function timeAgo(utcSeconds: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function formatScore(score: number): string {
-  if (score >= 1000) return `${(score / 1000).toFixed(1)}k`;
-  return String(score);
-}
-
 function isDirectImage(url: string, domain: string): boolean {
   return (
     /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(url) ||
@@ -36,7 +31,6 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const [clicked, setClicked] = useState(false);
   const [imgIndex, setImgIndex] = useState(0);
   const [resolvedNumComments, setResolvedNumComments] = useState(post.numComments);
-  const [resolvedScore, setResolvedScore] = useState(post.score);
   const { isSaved, toggle } = useSavedPosts();
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
@@ -50,15 +44,13 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
       const cachedRaw = localStorage.getItem(`post:${post.id}`);
       const cachedPost = cachedRaw ? (JSON.parse(cachedRaw) as RedditPost) : null;
       const mergedNumComments = Math.max(post.numComments, cachedPost?.numComments ?? 0);
-      const mergedScore = Math.max(post.score, cachedPost?.score ?? 0);
       setResolvedNumComments(mergedNumComments);
-      setResolvedScore(mergedScore);
       localStorage.setItem(
         `post:${post.id}`,
         JSON.stringify(
-          mergedNumComments === post.numComments && mergedScore === post.score
+          mergedNumComments === post.numComments
             ? post
-            : { ...post, numComments: mergedNumComments, score: mergedScore }
+            : { ...post, numComments: mergedNumComments }
         )
       );
     } catch {
@@ -148,7 +140,6 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-base text-gray-500">
               <span>by u/{post.author}</span>
-              <span aria-label={`${resolvedScore} points`}>▲ {formatScore(resolvedScore)}</span>
               <span>{timeAgo(post.createdUtc)}</span>
               {!post.isSelf && <span className="italic text-gray-600">{post.domain}</span>}
             </div>
