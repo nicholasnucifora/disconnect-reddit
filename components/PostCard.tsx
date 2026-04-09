@@ -96,15 +96,29 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
       <div className="p-6">
         <div className="flex items-start gap-4">
           <div className="min-w-0 flex-1">
-            <div className="mb-1.5">
-              <span className="text-sm font-semibold uppercase tracking-wide text-indigo-400">
-                r/{post.subreddit}
-              </span>
-              {post.flair && (
-                <span className="ml-2 rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-500">
-                  {post.flair}
+            <div className="mb-1.5 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <span className="text-sm font-semibold uppercase tracking-wide text-indigo-400">
+                  r/{post.subreddit}
                 </span>
-              )}
+                {post.flair && (
+                  <span className="ml-2 rounded bg-gray-800 px-1.5 py-0.5 text-xs text-gray-500">
+                    {post.flair}
+                  </span>
+                )}
+              </div>
+              <button
+                onClick={handleToggleSaved}
+                aria-label={saved ? "Remove from saved posts" : "Save post"}
+                title={saved ? "Saved" : "Save post"}
+                className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-xl transition-colors ${
+                  saved
+                    ? "border-amber-400/60 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
+                    : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
+                }`}
+              >
+                {saved ? "★" : "☆"}
+              </button>
             </div>
 
             <h2 className="mb-2 text-xl font-semibold leading-snug text-gray-100">
@@ -203,16 +217,6 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
         )}
 
         <div className="mt-4 flex items-center gap-4">
-          <button
-            onClick={handleToggleSaved}
-            aria-label={saved ? "Remove from saved posts" : "Save post"}
-            className={`inline-flex items-center gap-2 text-sm transition-colors ${
-              saved ? "text-amber-300 hover:text-amber-200" : "text-gray-400 hover:text-amber-300"
-            }`}
-          >
-            <span className="text-base leading-none">{saved ? "★" : "☆"}</span>
-            <span>{saved ? "Saved" : "Save"}</span>
-          </button>
           <a
             href={detailUrl}
             onClick={navigateToPost}
