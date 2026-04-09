@@ -238,7 +238,7 @@ export async function fetchPostComments(
 
 export async function fetchPostCommentCount(postId: string): Promise<number> {
   const res = await fetch(
-    `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=500`,
+    `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=100`,
     { headers: BROWSER_HEADERS }
   );
 
