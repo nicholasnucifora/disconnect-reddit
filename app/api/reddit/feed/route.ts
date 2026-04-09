@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=300",
+          "Cache-Control": "no-store, max-age=0",
         },
       }
     );

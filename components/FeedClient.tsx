@@ -58,7 +58,10 @@ export default function FeedClient() {
     setLoading(true);
     setFetchErrors([]);
     try {
-      const res = await fetch(`/api/reddit/feed?feedId=${encodeURIComponent(activeFeedId)}`);
+      const res = await fetch(
+        `/api/reddit/feed?feedId=${encodeURIComponent(activeFeedId)}&ts=${Date.now()}`,
+        { cache: "no-store" }
+      );
       if (!res.ok) throw new Error("Failed to fetch posts");
       const json = await res.json();
       const fetched: RedditPost[] = json.posts ?? [];
