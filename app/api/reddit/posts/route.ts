@@ -78,10 +78,10 @@ export async function GET(request: NextRequest) {
         subreddit: post.subreddit,
       }));
 
-    const refreshedCounts = await refreshCommentCounts(postsToRefresh, 4);
-    if (refreshedCounts.length > 0) {
-      await upsertCommentCounts(refreshedCounts);
-      for (const entry of refreshedCounts) {
+    const refreshResult = await refreshCommentCounts(postsToRefresh, 4);
+    if (refreshResult.refreshed.length > 0) {
+      await upsertCommentCounts(refreshResult.refreshed);
+      for (const entry of refreshResult.refreshed) {
         cachedCounts.set(entry.postId, {
           postId: entry.postId,
           subreddit: entry.subreddit,

@@ -5,7 +5,10 @@ import {
   isCommentCountStale,
   upsertCommentCounts,
 } from "@/lib/comment-count-cache";
-import { refreshCommentCounts } from "@/lib/comment-count-refresh";
+import {
+  type FailedCommentCountRefresh,
+  refreshCommentCounts,
+} from "@/lib/comment-count-refresh";
 import { fetchSubredditPosts, type RedditPost } from "@/lib/reddit";
 import { createClient } from "@/lib/supabase/server";
 
@@ -17,6 +20,7 @@ export interface FeedSnapshotResult {
   posts: RedditPost[];
   generatedAt: string;
   source: "snapshot" | "rebuilt";
+  failedRefreshes: FailedCommentCountRefresh[];
 }
 
 function normalizeSubreddit(name: string): string {
@@ -121,9 +125,12 @@ interface BuildFeedPostsOptions {
   forceRefresh?: boolean;
 }
 
-async function buildFeedPosts(feedId: string, options: BuildFeedPostsOptions = {}): Promise<RedditPost[]> {
+async function buildFeedPosts(
+  feedId: string,
+  options: BuildFeedPostsOptions = {}
+): Promise<{ posts: RedditPost[]; failedRefreshes: FailedCommentCountRefresh[] }> {
   const subreddits = await getFeedSubreddits(feedId);
-  if (subreddits.length === 0) return [];
+  if (subreddits.length === 0) return { posts: [], failedRefreshes: [] };
 
   const results = await Promise.allSettled(
     subreddits.map((subreddit) => fetchSubredditPosts(subreddit, "hot", 100))
@@ -150,10 +157,10 @@ async function buildFeedPosts(feedId: string, options: BuildFeedPostsOptions = {
       subreddit: post.subreddit,
     }));
 
-  const refreshedCounts = await refreshCommentCounts(postsToRefresh, 4);
-  if (refreshedCounts.length > 0) {
-    await upsertCommentCounts(refreshedCounts);
-    for (const entry of refreshedCounts) {
+  const refreshResult = await refreshCommentCounts(postsToRefresh, 4);
+  if (refreshResult.refreshed.length > 0) {
+    await upsertCommentCounts(refreshResult.refreshed);
+    for (const entry of refreshResult.refreshed) {
       cachedCounts.set(entry.postId, {
         postId: entry.postId,
         subreddit: entry.subreddit,
@@ -164,14 +171,17 @@ async function buildFeedPosts(feedId: string, options: BuildFeedPostsOptions = {
     }
   }
 
-  return merged.slice(0, SNAPSHOT_POST_LIMIT).map((post) => {
-    const cached = cachedCounts.get(post.id);
-    if (!cached) return post;
-    return {
-      ...post,
-      numComments: Math.max(post.numComments, cached.numComments),
-    };
-  });
+  return {
+    posts: merged.slice(0, SNAPSHOT_POST_LIMIT).map((post) => {
+      const cached = cachedCounts.get(post.id);
+      if (!cached) return post;
+      return {
+        ...post,
+        numComments: Math.max(post.numComments, cached.numComments),
+      };
+    }),
+    failedRefreshes: refreshResult.failed,
+  };
 }
 
 export async function readLatestFeedSnapshot(feedId: string): Promise<FeedSnapshotResult | null> {
@@ -206,6 +216,7 @@ export async function readLatestFeedSnapshot(feedId: string): Promise<FeedSnapsh
     posts: (postRows ?? []).map((row: { post_json: RedditPost }) => row.post_json),
     generatedAt: snapshot.generated_at,
     source: "snapshot",
+    failedRefreshes: [],
   };
 }
 
@@ -217,7 +228,7 @@ export async function buildAndStoreFeedSnapshot(
   feedId: string,
   options: BuildFeedSnapshotOptions = {}
 ): Promise<FeedSnapshotResult> {
-  const posts = await buildFeedPosts(feedId, options);
+  const { posts, failedRefreshes } = await buildFeedPosts(feedId, options);
   const generatedAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + SNAPSHOT_TTL_MS).toISOString();
   const supabase = createClient();
@@ -273,6 +284,7 @@ export async function buildAndStoreFeedSnapshot(
     posts,
     generatedAt,
     source: "rebuilt",
+    failedRefreshes,
   };
 }
 

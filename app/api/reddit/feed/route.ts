@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
         posts: snapshot.posts,
         generatedAt: snapshot.generatedAt,
         source: snapshot.source,
+        failedRefreshes: snapshot.failedRefreshes,
       },
       {
         headers: {

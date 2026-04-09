@@ -35,11 +35,11 @@ export async function POST(request: NextRequest) {
       return !cachedEntry || isCommentCountStale(cachedEntry);
     });
 
-    const refreshed = await refreshCommentCounts(toRefresh, 4);
+    const refreshResult = await refreshCommentCounts(toRefresh, 4);
 
-    if (refreshed.length > 0) {
-      await upsertCommentCounts(refreshed);
-      for (const entry of refreshed) {
+    if (refreshResult.refreshed.length > 0) {
+      await upsertCommentCounts(refreshResult.refreshed);
+      for (const entry of refreshResult.refreshed) {
         cached.set(entry.postId, {
           postId: entry.postId,
           subreddit: entry.subreddit,

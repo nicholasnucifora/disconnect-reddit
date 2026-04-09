@@ -24,6 +24,9 @@ export default function FeedClient() {
   const [dismissedReady, setDismissedReady] = useState(false);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
   const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
+  const [refreshFailures, setRefreshFailures] = useState<
+    Array<{ postId: string; subreddit: string; title?: string; error: string }>
+  >([]);
 
   const supabase = createClient();
 
@@ -66,6 +69,7 @@ export default function FeedClient() {
       const json = await res.json();
       const fetched: RedditPost[] = json.posts ?? [];
       setFetchErrors(json.errors ?? []);
+      setRefreshFailures([]);
       setPosts(fetched.filter((p) => !dismissedIds.has(p.id)));
     } catch (e) {
       setFetchErrors([e instanceof Error ? e.message : "Unknown error"]);
@@ -86,6 +90,7 @@ export default function FeedClient() {
     setRefreshing(true);
     setRefreshMessage(null);
     setFeedCleared(false);
+    setRefreshFailures([]);
     try {
       const res = await fetch("/api/reddit/precompute", {
         method: "POST",
@@ -101,7 +106,23 @@ export default function FeedClient() {
       }
 
       await fetchPosts();
-      setRefreshMessage(`Prepared ${body.postCount ?? 0} posts just now.`);
+      const failedRefreshes = Array.isArray(body.failedRefreshes) ? body.failedRefreshes : [];
+      if (failedRefreshes.length > 0) {
+        const titleMap = new Map(
+          posts.map((post) => [post.id, post.title] as const)
+        );
+        setRefreshFailures(
+          failedRefreshes.map((entry: { postId: string; subreddit: string; error: string }) => ({
+            ...entry,
+            title: titleMap.get(entry.postId),
+          }))
+        );
+      }
+      setRefreshMessage(
+        failedRefreshes.length > 0
+          ? `Prepared ${body.postCount ?? 0} posts with ${failedRefreshes.length} refresh failures.`
+          : `Prepared ${body.postCount ?? 0} posts just now.`
+      );
     } catch (err) {
       setRefreshMessage(err instanceof Error ? err.message : "Failed to refresh prepared feed");
     } finally {
@@ -213,6 +234,19 @@ export default function FeedClient() {
 
       {refreshMessage && (
         <p className="text-sm text-gray-400">{refreshMessage}</p>
+      )}
+
+      {refreshFailures.length > 0 && (
+        <div className="rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 text-sm text-amber-200">
+          <p className="font-medium">Some posts could not be recounted.</p>
+          <div className="mt-2 space-y-1 text-xs text-amber-100/90">
+            {refreshFailures.slice(0, 8).map((failure) => (
+              <p key={failure.postId}>
+                r/{failure.subreddit} {failure.title ? `- ${failure.title}` : `- ${failure.postId}`} ({failure.postId})
+              </p>
+            ))}
+          </div>
+        </div>
       )}
 
       {loading ? (

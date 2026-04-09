@@ -56,6 +56,7 @@ export async function POST(request: NextRequest) {
       feedId,
       generatedAt: snapshot.generatedAt,
       postCount: snapshot.posts.length,
+      failedRefreshes: snapshot.failedRefreshes,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
