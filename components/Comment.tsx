@@ -13,11 +13,6 @@ function timeAgo(utcSeconds: number): string {
   return `${Math.floor(diff / 86400)}d ago`;
 }
 
-function formatScore(score: number): string {
-  if (score >= 1000) return `${(score / 1000).toFixed(1)}k`;
-  return String(score);
-}
-
 function countDescendants(comments: CommentOrMore[]): number {
   let n = 0;
   for (const c of comments) {
@@ -131,7 +126,6 @@ function RegularComment({
           <span className={`font-semibold text-base ${nameColor}`}>
             u/{comment.author}
           </span>
-          <span className="text-sm text-gray-500">▲ {formatScore(comment.score)}</span>
           <span className="text-sm text-gray-600">{timeAgo(comment.createdUtc)}</span>
           {collapsed && descendantCount > 0 && (
             <span className="text-sm text-gray-600">
