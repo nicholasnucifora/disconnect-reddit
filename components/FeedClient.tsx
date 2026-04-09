@@ -10,7 +10,7 @@ import PostCard from "./PostCard";
 
 export default function FeedClient() {
   const { subreddits, ready: subredditsReady } = useSubreddits();
-  const { activeFeedId, getActiveFeedSubreddits, ready: feedsReady } = useFeeds();
+  const { feeds, activeFeedId, getActiveFeedSubreddits, ready: feedsReady } = useFeeds();
   const activeSubs = useMemo(
     () => getActiveFeedSubreddits(subreddits),
     [getActiveFeedSubreddits, subreddits]
@@ -18,8 +18,10 @@ export default function FeedClient() {
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [dismissedReady, setDismissedReady] = useState(false);
   const [fetchErrors, setFetchErrors] = useState<string[]>([]);
+  const [refreshMessage, setRefreshMessage] = useState<string | null>(null);
 
   const supabase = createClient();
 
@@ -71,6 +73,32 @@ export default function FeedClient() {
     if (ready) fetchPosts();
   }, [fetchPosts, ready]);
 
+  async function refreshPreparedFeed() {
+    setRefreshing(true);
+    setRefreshMessage(null);
+    try {
+      const res = await fetch("/api/reddit/precompute", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ feedId: activeFeedId }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(body.error ?? "Failed to refresh prepared feed");
+      }
+
+      await fetchPosts();
+      setRefreshMessage(`Prepared ${body.postCount ?? 0} posts just now.`);
+    } catch (err) {
+      setRefreshMessage(err instanceof Error ? err.message : "Failed to refresh prepared feed");
+    } finally {
+      setRefreshing(false);
+    }
+  }
+
   async function dismissPost(postId: string) {
     setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));
     setPosts((prev) => prev.filter((p) => p.id !== postId));
@@ -118,6 +146,28 @@ export default function FeedClient() {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900/70 px-4 py-3">
+        <div>
+          <p className="text-sm font-medium text-gray-200">
+            {feeds.find((feed) => feed.id === activeFeedId)?.name ?? "Home Feed"}
+          </p>
+          <p className="text-xs text-gray-500">
+            Rebuild this feed snapshot now to test fresh comment counts.
+          </p>
+        </div>
+        <button
+          onClick={refreshPreparedFeed}
+          disabled={loading || refreshing || activeSubs.length === 0}
+          className="rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
+        >
+          {refreshing ? "Refreshing..." : "Refresh Feed Data"}
+        </button>
+      </div>
+
+      {refreshMessage && (
+        <p className="text-sm text-gray-400">{refreshMessage}</p>
+      )}
+
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />

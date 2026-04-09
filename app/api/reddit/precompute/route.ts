@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildAllFeedSnapshots } from "@/lib/feed-snapshots";
+import { buildAllFeedSnapshots, buildAndStoreFeedSnapshot } from "@/lib/feed-snapshots";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -23,6 +23,24 @@ export async function GET(request: NextRequest) {
   try {
     const snapshots = await buildAllFeedSnapshots();
     return NextResponse.json({ ok: true, snapshots });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json().catch(() => ({}));
+    const feedId = typeof body?.feedId === "string" && body.feedId.trim() ? body.feedId : "home";
+    const snapshot = await buildAndStoreFeedSnapshot(feedId);
+
+    return NextResponse.json({
+      ok: true,
+      feedId,
+      generatedAt: snapshot.generatedAt,
+      postCount: snapshot.posts.length,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";
     return NextResponse.json({ error: message }, { status: 500 });
