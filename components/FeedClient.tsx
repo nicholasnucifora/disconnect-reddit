@@ -4,11 +4,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 import {
+  clearFeedClearedMark,
   clearCachedPostCollection,
   filterDismissedPosts,
   getCachedPostCollection,
   getDismissedPostIds,
   getFeedCacheKey,
+  isFeedMarkedCleared,
+  markFeedCleared,
   persistDismissedPost,
   removeDismissedPost,
   removePostFromCachedCollections,
@@ -91,6 +94,19 @@ export default function FeedClient() {
     feedClearedRef.current = feedCleared;
   }, [feedCleared]);
 
+  useEffect(() => {
+    const cleared = isFeedMarkedCleared(activeFeedId);
+    feedClearedRef.current = cleared;
+    setFeedCleared(cleared);
+    if (cleared) {
+      setPosts([]);
+      setLoading(false);
+      setFetchErrors([]);
+      setRefreshFailures([]);
+      setContentEpoch((value) => value + 1);
+    }
+  }, [activeFeedId]);
+
   const ready = subredditsReady && dismissedReady && feedsReady;
 
   const fetchPosts = useCallback(
@@ -101,12 +117,24 @@ export default function FeedClient() {
         return;
       }
 
+      if (!options.forceRefresh && isFeedMarkedCleared(activeFeedId)) {
+        feedClearedRef.current = true;
+        setPosts([]);
+        setLoading(false);
+        setFetchErrors([]);
+        setRefreshFailures([]);
+        setFeedCleared(true);
+        return;
+      }
+
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
 
       if (!options.forceRefresh) {
         const cached = getCachedPostCollection(cacheKey, scopeToken);
         if (cached) {
+          clearFeedClearedMark(activeFeedId);
+          feedClearedRef.current = false;
           applyPosts(cached.posts);
           setFetchErrors([]);
           setRefreshFailures([]);
@@ -134,6 +162,8 @@ export default function FeedClient() {
           source: json.source,
           scopeToken,
         });
+        clearFeedClearedMark(activeFeedId);
+        feedClearedRef.current = false;
         setFetchErrors(json.errors ?? []);
         setRefreshFailures([]);
         setFeedCleared(false);
@@ -157,13 +187,13 @@ export default function FeedClient() {
   }, [feedCleared, fetchPosts, ready]);
 
   useEffect(() => {
-    feedClearedRef.current = false;
-    setFeedCleared(false);
+    setContentEpoch((value) => value + 1);
   }, [activeFeedId]);
 
   async function refreshPreparedFeed() {
     setRefreshing(true);
     setRefreshMessage(null);
+    clearFeedClearedMark(activeFeedId);
     feedClearedRef.current = false;
     setFeedCleared(false);
     setRefreshFailures([]);
@@ -210,6 +240,7 @@ export default function FeedClient() {
     setClearing(true);
     setRefreshMessage(null);
     requestIdRef.current += 1;
+    markFeedCleared(activeFeedId);
     feedClearedRef.current = true;
     clearCachedPostCollection(cacheKey);
     setPosts([]);
@@ -234,6 +265,7 @@ export default function FeedClient() {
 
       setRefreshMessage(`Cleared ${body.deletedSnapshots ?? 0} stored snapshots for this feed.`);
     } catch (error) {
+      clearFeedClearedMark(activeFeedId);
       feedClearedRef.current = false;
       setFeedCleared(false);
       setRefreshMessage(error instanceof Error ? error.message : "Failed to clear prepared feed");

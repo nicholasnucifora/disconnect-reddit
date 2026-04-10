@@ -322,8 +322,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     </span>
                   )}
                 </div>
-                {isMultiImageGallery && (
-                  <div className="flex items-center gap-2">
+                <div className={`${isMultiImageGallery ? "flex" : "hidden"} items-center gap-2 md:flex`}>
                     <button
                       type="button"
                       onClick={handleToggleSaved}
@@ -353,8 +352,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     >
                       {"\u2715"}
                     </button>
-                  </div>
-                )}
+                </div>
               </div>
 
               <button

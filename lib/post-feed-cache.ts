@@ -1,6 +1,7 @@
 import { type RedditPost } from "@/lib/reddit";
 
 const POST_COLLECTION_CACHE_PREFIX = "disconnect_reddit_post_collection_v1:";
+const CLEARED_FEED_STORAGE_PREFIX = "disconnect_reddit_cleared_feed_v1:";
 const DISMISSED_POSTS_STORAGE_KEY = "disconnect_reddit_dismissed_posts_v1";
 const LEGACY_SESSION_DISMISSED_KEY = "localDismissed";
 
@@ -167,6 +168,36 @@ export function clearCachedPostCollection(key: string) {
 
   try {
     window.localStorage.removeItem(`${POST_COLLECTION_CACHE_PREFIX}${key}`);
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+export function isFeedMarkedCleared(feedId: string): boolean {
+  if (!canUseStorage()) return false;
+
+  try {
+    return window.localStorage.getItem(`${CLEARED_FEED_STORAGE_PREFIX}${feedId}`) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function markFeedCleared(feedId: string) {
+  if (!canUseStorage()) return;
+
+  try {
+    window.localStorage.setItem(`${CLEARED_FEED_STORAGE_PREFIX}${feedId}`, "1");
+  } catch {
+    // Ignore storage write failures.
+  }
+}
+
+export function clearFeedClearedMark(feedId: string) {
+  if (!canUseStorage()) return;
+
+  try {
+    window.localStorage.removeItem(`${CLEARED_FEED_STORAGE_PREFIX}${feedId}`);
   } catch {
     // Ignore storage write failures.
   }
