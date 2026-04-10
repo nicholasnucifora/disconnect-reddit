@@ -200,6 +200,7 @@ export default function FeedClient() {
   async function clearPreparedFeed() {
     setClearing(true);
     setRefreshMessage(null);
+    requestIdRef.current += 1;
     try {
       const res = await fetch("/api/reddit/precompute", {
         method: "POST",
@@ -216,7 +217,9 @@ export default function FeedClient() {
 
       clearCachedPostCollection(cacheKey);
       setPosts([]);
+      setLoading(false);
       setFetchErrors([]);
+      setRefreshFailures([]);
       setFeedCleared(true);
       setRefreshMessage(`Cleared ${body.deletedSnapshots ?? 0} stored snapshots for this feed.`);
     } catch (error) {
