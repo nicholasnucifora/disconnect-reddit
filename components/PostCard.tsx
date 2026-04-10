@@ -270,6 +270,39 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
       : "border-gray-700/0 bg-gray-900/0 text-transparent";
   const swipeBadgeSymbol =
     activeSwipeAction === "save" ? "\u2605" : activeSwipeAction === "dismiss" ? "\u2715" : "";
+  const actionButtons = (
+    <div className={`${isMultiImageGallery ? "flex" : "hidden"} items-center gap-2 md:flex`}>
+      <button
+        type="button"
+        onClick={handleToggleSaved}
+        data-card-swipe-ignore="true"
+        aria-label={saved ? "Remove from saved posts" : "Save post"}
+        title={saved ? "Saved" : "Save post"}
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-xl transition-colors ${
+          saved
+            ? "border-amber-400/60 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
+            : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
+        }`}
+      >
+        {saved ? "\u2605" : "\u2606"}
+      </button>
+      <button
+        type="button"
+        onClick={handleDismissClick}
+        data-card-swipe-ignore="true"
+        aria-label={canDismiss ? "Remove post" : "Remove unavailable"}
+        title={canDismiss ? "Remove post" : "Remove unavailable"}
+        disabled={!canDismiss}
+        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-lg transition-colors ${
+          canDismiss
+            ? "border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+            : "border-gray-700 bg-gray-800 text-gray-600"
+        }`}
+      >
+        {"\u2715"}
+      </button>
+    </div>
+  );
 
   return (
     <div className="relative overflow-hidden rounded-lg">
@@ -322,37 +355,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                     </span>
                   )}
                 </div>
-                <div className={`${isMultiImageGallery ? "flex" : "hidden"} items-center gap-2 md:flex`}>
-                    <button
-                      type="button"
-                      onClick={handleToggleSaved}
-                      data-card-swipe-ignore="true"
-                      aria-label={saved ? "Remove from saved posts" : "Save post"}
-                      title={saved ? "Saved" : "Save post"}
-                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-xl transition-colors ${
-                        saved
-                          ? "border-amber-400/60 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
-                          : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
-                      }`}
-                    >
-                      {saved ? "\u2605" : "\u2606"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleDismissClick}
-                      data-card-swipe-ignore="true"
-                      aria-label={canDismiss ? "Remove post" : "Remove unavailable"}
-                      title={canDismiss ? "Remove post" : "Remove unavailable"}
-                      disabled={!canDismiss}
-                      className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-lg transition-colors ${
-                        canDismiss
-                          ? "border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20"
-                          : "border-gray-700 bg-gray-800 text-gray-600"
-                      }`}
-                    >
-                      {"\u2715"}
-                    </button>
-                </div>
+                {!hasThumbnail && actionButtons}
               </div>
 
               <button
@@ -371,14 +374,17 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
             </div>
 
             {hasThumbnail && (
-              <button type="button" onClick={navigateToPost} className="mt-0.5 flex-shrink-0">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={post.thumbnail!}
-                  alt=""
-                  className="h-16 w-20 rounded bg-gray-800 object-cover sm:h-20 sm:w-28"
-                />
-              </button>
+              <div className="flex flex-shrink-0 flex-col items-end gap-3">
+                {actionButtons}
+                <button type="button" onClick={navigateToPost} className="mt-0.5">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={post.thumbnail!}
+                    alt=""
+                    className="h-16 w-20 rounded bg-gray-800 object-cover sm:h-20 sm:w-28"
+                  />
+                </button>
+              </div>
             )}
           </div>
 
