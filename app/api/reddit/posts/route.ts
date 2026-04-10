@@ -6,8 +6,10 @@ import {
 } from "@/lib/comment-count-cache";
 import { refreshCommentCounts } from "@/lib/comment-count-refresh";
 import { fetchSubredditPosts, RedditPost } from "@/lib/reddit";
+import { loadUserSubredditRuleMap } from "@/lib/subreddit-rules-server";
+import { createDefaultSubredditRule, normalizeSubreddit } from "@/lib/subreddit-rules";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -34,8 +36,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const subredditRuleMap = await loadUserSubredditRuleMap();
     const results = await Promise.allSettled(
-      subreddits.map((sub) => fetchSubredditPosts(sub, sort, 100))
+      subreddits.map((subreddit) => {
+        const rule =
+          subredditRuleMap.get(normalizeSubreddit(subreddit)) ?? createDefaultSubredditRule(subreddit);
+        return fetchSubredditPosts(subreddit, sort, rule.maxPosts);
+      })
     );
 
     const posts: RedditPost[] = [];
@@ -96,15 +103,22 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const withCachedCounts = merged.map((post) => {
-      const cached = cachedCounts.get(post.id);
-      if (!cached) return post;
-      return {
-        ...post,
-        numComments: Math.max(post.numComments, cached.numComments),
-        score: Math.max(post.score, cached.score),
-      };
-    });
+    const withCachedCounts = merged
+      .map((post) => {
+        const cached = cachedCounts.get(post.id);
+        if (!cached) return post;
+        return {
+          ...post,
+          numComments: Math.max(post.numComments, cached.numComments),
+          score: Math.max(post.score, cached.score),
+        };
+      })
+      .filter((post) => {
+        const rule =
+          subredditRuleMap.get(normalizeSubreddit(post.subreddit)) ??
+          createDefaultSubredditRule(post.subreddit);
+        return post.numComments >= rule.minComments;
+      });
 
     return NextResponse.json(
       { posts: withCachedCounts, errors: errors.length > 0 ? errors : undefined },

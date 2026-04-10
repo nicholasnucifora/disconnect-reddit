@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildAllFeedSnapshots,
   buildAndStoreFeedSnapshot,
+  clearAllFeedSnapshots,
   clearFeedSnapshot,
 } from "@/lib/feed-snapshots";
 
@@ -37,6 +38,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
     const feedId = typeof body?.feedId === "string" && body.feedId.trim() ? body.feedId : "home";
+    if (body?.action === "clearAll") {
+      const result = await clearAllFeedSnapshots();
+      return NextResponse.json({
+        ok: true,
+        action: "clearAll",
+        deletedSnapshots: result.deletedSnapshots,
+      });
+    }
+
     if (body?.action === "clear") {
       const result = await clearFeedSnapshot(feedId);
       return NextResponse.json({

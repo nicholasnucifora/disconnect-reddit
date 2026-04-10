@@ -1,7 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { USERNAME } from "@/lib/config";
+import { clearAllCachedPostCollections } from "@/lib/post-feed-cache";
+import {
+  DEFAULT_SUBREDDIT_MAX_POSTS,
+  DEFAULT_SUBREDDIT_MIN_COMMENTS,
+  normalizeSubreddit,
+  sanitizeSubredditMaxPosts,
+  sanitizeSubredditMinComments,
+} from "@/lib/subreddit-rules";
+import { useSubreddits } from "@/lib/subreddits-context";
+import { createClient } from "@/lib/supabase/client";
 import { useUsage } from "@/lib/usage-provider";
 import type { UsageScheduleWithWindows, UsageSettingsPayload } from "@/lib/usage/types";
 
@@ -54,12 +65,18 @@ function makeSchedule(index: number): UsageScheduleWithWindows {
 
 export default function UsageSettingsClient() {
   const { refreshStatus } = useUsage();
+  const { subreddits, ready: subredditsReady } = useSubreddits();
+  const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
+  const [subredditRulesReady, setSubredditRulesReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [timezone, setTimezone] = useState("Australia/Brisbane");
   const [dailyLimitMinutes, setDailyLimitMinutes] = useState("60");
   const [schedules, setSchedules] = useState<UsageScheduleWithWindows[]>([]);
+  const [subredditRules, setSubredditRules] = useState<
+    Record<string, { maxPosts: string; minComments: string }>
+  >({});
 
   useEffect(() => {
     let ignore = false;
@@ -85,8 +102,74 @@ export default function UsageSettingsClient() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!subredditsReady) return;
+
+    let ignore = false;
+
+    async function loadSubredditRules() {
+      setSubredditRulesReady(false);
+
+      const { data, error } = await supabase
+        .from("user_subreddits")
+        .select("subreddit, max_posts, min_comments")
+        .eq("username", USERNAME)
+        .order("added_at", { ascending: true });
+
+      if (ignore) return;
+
+      if (error) {
+        setSubredditRules({});
+        setSubredditRulesReady(true);
+        return;
+      }
+
+      const nextRules = Object.fromEntries(
+        subreddits.map((subreddit) => {
+          const normalized = normalizeSubreddit(subreddit);
+          const row = (data ?? []).find(
+            (item: { subreddit: string }) => normalizeSubreddit(item.subreddit) === normalized
+          ) as { subreddit: string; max_posts: number | null; min_comments: number | null } | undefined;
+
+          return [
+            normalized,
+            {
+              maxPosts: String(sanitizeSubredditMaxPosts(row?.max_posts)),
+              minComments: String(sanitizeSubredditMinComments(row?.min_comments)),
+            },
+          ] as const;
+        })
+      );
+
+      setSubredditRules(nextRules);
+      setSubredditRulesReady(true);
+    }
+
+    void loadSubredditRules();
+
+    return () => {
+      ignore = true;
+    };
+  }, [subreddits, subredditsReady, supabase]);
+
   function updateSchedule(id: string, updater: (schedule: UsageScheduleWithWindows) => UsageScheduleWithWindows) {
     setSchedules((current) => current.map((schedule) => (schedule.id === id ? updater(schedule) : schedule)));
+  }
+
+  function updateSubredditRule(
+    subreddit: string,
+    field: "maxPosts" | "minComments",
+    value: string
+  ) {
+    const normalized = normalizeSubreddit(subreddit);
+    setSubredditRules((current) => ({
+      ...current,
+      [normalized]: {
+        maxPosts: current[normalized]?.maxPosts ?? String(DEFAULT_SUBREDDIT_MAX_POSTS),
+        minComments: current[normalized]?.minComments ?? String(DEFAULT_SUBREDDIT_MIN_COMMENTS),
+        [field]: value,
+      },
+    }));
   }
 
   async function handleSave() {
@@ -112,11 +195,71 @@ export default function UsageSettingsClient() {
       if (!response.ok) throw new Error("Failed to save settings");
 
       const saved = (await response.json()) as UsageSettingsPayload;
+      const subredditPayload = subreddits.map((subreddit) => {
+        const normalized = normalizeSubreddit(subreddit);
+        const current = subredditRules[normalized];
+
+        return {
+          username: USERNAME,
+          subreddit: normalized,
+          max_posts: sanitizeSubredditMaxPosts(
+            current?.maxPosts === "" ? null : Number(current?.maxPosts)
+          ),
+          min_comments: sanitizeSubredditMinComments(
+            current?.minComments === "" ? null : Number(current?.minComments)
+          ),
+        };
+      });
+
+      let subredditError: Error | null = null;
+      if (subredditPayload.length > 0) {
+        const result = await supabase
+          .from("user_subreddits")
+          .upsert(subredditPayload, { onConflict: "username,subreddit" });
+        subredditError = result.error;
+      }
+
+      if (subredditError) {
+        throw new Error(subredditError.message);
+      }
+
       setTimezone(saved.timezone);
       setDailyLimitMinutes(toMinutes(saved.dailyLimitSeconds) || "60");
       setSchedules(saved.schedules);
+      setSubredditRules(
+        Object.fromEntries(
+          subredditPayload.map((entry) => [
+            entry.subreddit,
+            {
+              maxPosts: String(entry.max_posts),
+              minComments: String(entry.min_comments),
+            },
+          ])
+        )
+      );
+
+      let invalidationWarning = false;
+      try {
+        const invalidateResponse = await fetch("/api/reddit/precompute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "clearAll" }),
+        });
+
+        if (!invalidateResponse.ok) {
+          invalidationWarning = true;
+        }
+      } catch {
+        invalidationWarning = true;
+      }
+
+      clearAllCachedPostCollections();
       await refreshStatus();
-      setMessage("Saved.");
+      setMessage(
+        invalidationWarning
+          ? "Saved. Feed snapshots were not cleared automatically."
+          : "Saved."
+      );
     } catch {
       setMessage("Could not save settings.");
     } finally {
@@ -145,7 +288,7 @@ export default function UsageSettingsClient() {
           </Link>
         </div>
 
-        {loading ? (
+        {loading || !subredditsReady || !subredditRulesReady ? (
           <div className="mt-10 flex h-48 items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-teal-400 border-t-transparent" />
           </div>
@@ -178,6 +321,83 @@ export default function UsageSettingsClient() {
                     <span className="text-sm text-gray-500">minutes</span>
                   </div>
                 </div>
+              </div>
+            </section>
+
+            <section className="mt-8 rounded-3xl border border-gray-800 bg-gray-900/70 p-6">
+              <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-white">Subreddit fetch rules</h2>
+                  <p className="mt-1 max-w-3xl text-sm text-gray-400">
+                    Tune how many posts are pulled per subreddit before feeds are merged, and require a minimum
+                    comment count before a post can appear.
+                  </p>
+                </div>
+              </div>
+
+              {subreddits.length === 0 ? (
+                <div className="mt-6 rounded-2xl border border-dashed border-gray-700 p-8 text-center text-sm text-gray-500">
+                  Add some subreddits first, then you can tune their fetch limits here.
+                </div>
+              ) : (
+                <div className="mt-6 space-y-3">
+                  {subreddits.map((subreddit) => {
+                    const normalized = normalizeSubreddit(subreddit);
+                    const current = subredditRules[normalized] ?? {
+                      maxPosts: String(DEFAULT_SUBREDDIT_MAX_POSTS),
+                      minComments: String(DEFAULT_SUBREDDIT_MIN_COMMENTS),
+                    };
+
+                    return (
+                      <div
+                        key={normalized}
+                        className="grid gap-4 rounded-2xl border border-gray-800 bg-gray-950/70 p-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,1fr)]"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-white">r/{subreddit}</p>
+                          <p className="mt-1 text-xs text-gray-500">
+                            Higher max-post values fetch more candidates. Higher comment minimums filter more aggressively.
+                          </p>
+                        </div>
+
+                        <label className="block">
+                          <span className="text-sm text-gray-400">Max posts fetched</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={current.maxPosts}
+                            onChange={(event) => updateSubredditRule(subreddit, "maxPosts", event.target.value)}
+                            className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white focus:border-teal-500 focus:outline-none"
+                            placeholder="100"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-sm text-gray-400">Minimum comments</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={current.minComments}
+                            onChange={(event) => updateSubredditRule(subreddit, "minComments", event.target.value)}
+                            className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white focus:border-teal-500 focus:outline-none"
+                            placeholder="0"
+                          />
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+                <p className="text-sm font-medium text-amber-200">Why there is no upvote filter</p>
+                <p className="mt-2 text-sm leading-6 text-amber-100/80">
+                  Reddit scores are noisy and often lag or get fuzzed by the source this app reads from. Comment counts
+                  are much more reliable here because the app can refresh them per post before ranking. An upvote
+                  threshold would hide and unhide posts inconsistently, so it is intentionally not offered as a hard
+                  filter.
+                </p>
               </div>
             </section>
 

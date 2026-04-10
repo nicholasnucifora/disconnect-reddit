@@ -172,6 +172,26 @@ export function clearCachedPostCollection(key: string) {
   }
 }
 
+export function clearAllCachedPostCollections() {
+  if (!canUseStorage()) return;
+
+  const storageKeys: string[] = [];
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const storageKey = window.localStorage.key(index);
+    if (storageKey?.startsWith(POST_COLLECTION_CACHE_PREFIX)) {
+      storageKeys.push(storageKey);
+    }
+  }
+
+  for (const storageKey of storageKeys) {
+    try {
+      window.localStorage.removeItem(storageKey);
+    } catch {
+      // Ignore storage write failures.
+    }
+  }
+}
+
 export function removePostFromCachedCollections(postId: string) {
   if (!canUseStorage()) return;
 

@@ -10,6 +10,12 @@ import {
   refreshCommentCounts,
 } from "@/lib/comment-count-refresh";
 import { fetchSubredditPosts, type RedditPost } from "@/lib/reddit";
+import {
+  createSubredditRuleMap,
+  mapSubredditRuleRow,
+  normalizeSubreddit,
+  type SubredditRule,
+} from "@/lib/subreddit-rules";
 import { createClient } from "@/lib/supabase/server";
 
 const SNAPSHOT_TTL_MS = 12 * 60 * 60 * 1000;
@@ -21,10 +27,6 @@ export interface FeedSnapshotResult {
   generatedAt: string;
   source: "snapshot" | "rebuilt";
   failedRefreshes: FailedCommentCountRefresh[];
-}
-
-function normalizeSubreddit(name: string): string {
-  return name.trim().replace(/^r\//i, "").toLowerCase();
 }
 
 async function getFeedRows(): Promise<Feed[]> {
@@ -66,11 +68,11 @@ async function getSubredditAssignments(): Promise<Map<string, string>> {
   );
 }
 
-async function getSubscribedSubreddits(): Promise<string[]> {
+async function getSubscribedSubredditRules(): Promise<SubredditRule[]> {
   const supabase = createClient();
   const { data, error } = await supabase
     .from("user_subreddits")
-    .select("subreddit")
+    .select("subreddit, max_posts, min_comments")
     .eq("username", USERNAME)
     .order("added_at", { ascending: true });
 
@@ -78,7 +80,10 @@ async function getSubscribedSubreddits(): Promise<string[]> {
     throw new Error(`Failed to load subreddits: ${error.message}`);
   }
 
-  return (data ?? []).map((row: { subreddit: string }) => row.subreddit);
+  return (data ?? []).map(
+    (row: { subreddit: string; max_posts: number | null; min_comments: number | null }) =>
+      mapSubredditRuleRow(row)
+  );
 }
 
 export async function getFeedDefinitions(): Promise<{
@@ -92,14 +97,14 @@ export async function getFeedDefinitions(): Promise<{
   };
 }
 
-async function getFeedSubreddits(feedId: string): Promise<string[]> {
-  const [subreddits, assignments] = await Promise.all([
-    getSubscribedSubreddits(),
+async function getFeedSubreddits(feedId: string): Promise<SubredditRule[]> {
+  const [subredditRules, assignments] = await Promise.all([
+    getSubscribedSubredditRules(),
     getSubredditAssignments(),
   ]);
 
-  return subreddits.filter((subreddit) => {
-    const assignedFeed = assignments.get(normalizeSubreddit(subreddit)) ?? HOME_FEED.id;
+  return subredditRules.filter((rule) => {
+    const assignedFeed = assignments.get(normalizeSubreddit(rule.subreddit)) ?? HOME_FEED.id;
     return assignedFeed === feedId;
   });
 }
@@ -132,11 +137,11 @@ async function buildFeedPosts(
   feedId: string,
   options: BuildFeedPostsOptions = {}
 ): Promise<{ posts: RedditPost[]; failedRefreshes: FailedCommentCountRefresh[] }> {
-  const subreddits = await getFeedSubreddits(feedId);
-  if (subreddits.length === 0) return { posts: [], failedRefreshes: [] };
+  const subredditRules = await getFeedSubreddits(feedId);
+  if (subredditRules.length === 0) return { posts: [], failedRefreshes: [] };
 
   const results = await Promise.allSettled(
-    subreddits.map((subreddit) => fetchSubredditPosts(subreddit, "hot", 100))
+    subredditRules.map((rule) => fetchSubredditPosts(rule.subreddit, "hot", rule.maxPosts))
   );
 
   const posts: RedditPost[] = [];
@@ -146,6 +151,7 @@ async function buildFeedPosts(
     }
   }
 
+  const subredditRuleMap = createSubredditRuleMap(subredditRules);
   const merged = mergePosts(posts);
   const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
   const postsToRefresh = merged
@@ -178,16 +184,24 @@ async function buildFeedPosts(
     }
   }
 
-  return {
-    posts: merged.slice(0, SNAPSHOT_POST_LIMIT).map((post) => {
+  const hydratedPosts = merged
+    .map((post) => {
       const cached = cachedCounts.get(post.id);
-      if (!cached) return post;
+      const numComments = cached ? Math.max(post.numComments, cached.numComments) : post.numComments;
+      const score = cached ? Math.max(post.score, cached.score) : post.score;
       return {
         ...post,
-        numComments: Math.max(post.numComments, cached.numComments),
-        score: Math.max(post.score, cached.score),
+        numComments,
+        score,
       };
-    }),
+    })
+    .filter((post) => {
+      const rule = subredditRuleMap.get(normalizeSubreddit(post.subreddit));
+      return post.numComments >= (rule?.minComments ?? 0);
+    });
+
+  return {
+    posts: hydratedPosts.slice(0, SNAPSHOT_POST_LIMIT),
     failedRefreshes: refreshResult.failed,
   };
 }
@@ -317,12 +331,12 @@ export async function buildAllFeedSnapshots(): Promise<Array<{ feedId: string; p
 export async function clearFeedSnapshot(feedId: string): Promise<{ deletedSnapshots: number }> {
   const supabase = createClient();
 
-  const subreddits = await getFeedSubreddits(feedId);
-  if (subreddits.length > 0) {
+  const subredditRules = await getFeedSubreddits(feedId);
+  if (subredditRules.length > 0) {
     await supabase
       .from("post_comment_counts")
       .delete()
-      .in("subreddit", subreddits.map((subreddit) => normalizeSubreddit(subreddit)));
+      .in("subreddit", subredditRules.map((rule) => normalizeSubreddit(rule.subreddit)));
   }
 
   const { data, error } = await supabase
@@ -334,6 +348,24 @@ export async function clearFeedSnapshot(feedId: string): Promise<{ deletedSnapsh
 
   if (error) {
     throw new Error(`Failed to clear feed snapshot: ${error.message}`);
+  }
+
+  return {
+    deletedSnapshots: data?.length ?? 0,
+  };
+}
+
+export async function clearAllFeedSnapshots(): Promise<{ deletedSnapshots: number }> {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("feed_snapshots")
+    .delete()
+    .eq("username", USERNAME)
+    .select("id");
+
+  if (error) {
+    throw new Error(`Failed to clear all feed snapshots: ${error.message}`);
   }
 
   return {
