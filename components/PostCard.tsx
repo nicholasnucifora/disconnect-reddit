@@ -6,6 +6,7 @@ import { RedditPost } from "@/lib/reddit";
 import { useSavedPosts } from "@/lib/saved-posts";
 
 const CARD_SWIPE_TRIGGER = 72;
+const CARD_SWIPE_NEUTRAL_ZONE = 22;
 const SWIPE_CLICK_SUPPRESSION_MS = 250;
 
 function timeAgo(utcSeconds: number): string {
@@ -244,14 +245,22 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   const saved = isSaved(post.id);
   const canDismiss = Boolean(onDismiss) || saved;
-  const swipeProgress = Math.min(1, Math.abs(swipeOffset) / CARD_SWIPE_TRIGGER);
+  const swipeDistance = Math.abs(swipeOffset);
+  const swipeActivationDistance = Math.max(0, swipeDistance - CARD_SWIPE_NEUTRAL_ZONE);
+  const swipeProgress = Math.min(1, swipeActivationDistance / CARD_SWIPE_TRIGGER);
   const activeSwipeAction =
-    swipeOffset > 0 ? "save" : swipeOffset < 0 && canDismiss ? "dismiss" : "none";
+    swipeOffset > CARD_SWIPE_NEUTRAL_ZONE
+      ? "save"
+      : swipeOffset < -CARD_SWIPE_NEUTRAL_ZONE && canDismiss
+      ? "dismiss"
+      : "none";
+  const swipeVisualProgress =
+    swipeProgress <= 0 ? 0 : Math.min(1, Math.pow(swipeProgress, 0.85));
   const swipeOverlayTint =
     activeSwipeAction === "save"
-      ? "rgba(245, 158, 11, 0.18)"
+      ? `rgba(245, 158, 11, ${0.06 + swipeVisualProgress * 0.26})`
       : activeSwipeAction === "dismiss"
-      ? "rgba(239, 68, 68, 0.18)"
+      ? `rgba(239, 68, 68, ${0.06 + swipeVisualProgress * 0.26})`
       : "rgba(17, 24, 39, 0)";
   const swipeBadgeClasses =
     activeSwipeAction === "save"
@@ -279,8 +288,8 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           className={`absolute top-1/2 z-10 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full border text-3xl shadow-lg backdrop-blur-sm transition-[left,opacity,transform,background-color,border-color,color] duration-150 ${swipeBadgeClasses}`}
           style={{
             left: `calc(50% + ${swipeOffset}px)`,
-            opacity: swipeProgress,
-            transform: `translate(-50%, -50%) scale(${0.92 + swipeProgress * 0.08})`,
+            opacity: swipeVisualProgress,
+            transform: `translate(-50%, -50%) scale(${0.68 + swipeVisualProgress * 0.4})`,
             transitionDuration: swipeDragging ? "0ms" : "150ms",
           }}
         >
