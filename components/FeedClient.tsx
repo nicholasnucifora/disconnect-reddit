@@ -38,6 +38,7 @@ export default function FeedClient() {
   const [refreshFailures, setRefreshFailures] = useState<
     Array<{ postId: string; subreddit: string; title?: string; error: string }>
   >([]);
+  const [contentEpoch, setContentEpoch] = useState(0);
 
   const supabase = createClient();
   const dismissedIdsRef = useRef<Set<string>>(new Set());
@@ -210,6 +211,13 @@ export default function FeedClient() {
     setRefreshMessage(null);
     requestIdRef.current += 1;
     feedClearedRef.current = true;
+    clearCachedPostCollection(cacheKey);
+    setPosts([]);
+    setLoading(false);
+    setFetchErrors([]);
+    setRefreshFailures([]);
+    setFeedCleared(true);
+    setContentEpoch((value) => value + 1);
     try {
       const res = await fetch("/api/reddit/precompute", {
         method: "POST",
@@ -224,14 +232,10 @@ export default function FeedClient() {
         throw new Error(body.error ?? "Failed to clear prepared feed");
       }
 
-      clearCachedPostCollection(cacheKey);
-      setPosts([]);
-      setLoading(false);
-      setFetchErrors([]);
-      setRefreshFailures([]);
-      setFeedCleared(true);
       setRefreshMessage(`Cleared ${body.deletedSnapshots ?? 0} stored snapshots for this feed.`);
     } catch (error) {
+      feedClearedRef.current = false;
+      setFeedCleared(false);
       setRefreshMessage(error instanceof Error ? error.message : "Failed to clear prepared feed");
     } finally {
       setClearing(false);
@@ -335,36 +339,38 @@ export default function FeedClient() {
         </div>
       )}
 
-      {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
-        </div>
-      ) : activeSubs.length === 0 ? (
-        <p className="py-16 text-center text-sm text-gray-500">
-          {subreddits.length === 0
-            ? "Add a subreddit in the sidebar to get started"
-            : "No subreddits in this feed - drag some over from another feed"}
-        </p>
-      ) : visiblePosts.length === 0 ? (
-        <div className="space-y-2 py-16">
-          <p className="text-center text-sm text-gray-500">
-            {feedCleared ? "Feed data cleared. Refresh to rebuild this snapshot." : "No posts found"}
+      <div key={`${activeFeedId}:${contentEpoch}:${feedCleared ? "cleared" : "live"}`}>
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
+          </div>
+        ) : activeSubs.length === 0 ? (
+          <p className="py-16 text-center text-sm text-gray-500">
+            {subreddits.length === 0
+              ? "Add a subreddit in the sidebar to get started"
+              : "No subreddits in this feed - drag some over from another feed"}
           </p>
-          {fetchErrors.length > 0 && (
-            <div className="space-y-1 rounded bg-red-950/40 p-3 text-xs text-red-400">
-              {fetchErrors.map((error, index) => (
-                <p key={index}>{error}</p>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {visiblePosts.map((post) => (
-            <PostCard key={post.id} post={post} onDismiss={dismissPost} />
-          ))}
-        </div>
-      )}
+        ) : visiblePosts.length === 0 ? (
+          <div className="space-y-2 py-16">
+            <p className="text-center text-sm text-gray-500">
+              {feedCleared ? "Feed data cleared. Refresh to rebuild this snapshot." : "No posts found"}
+            </p>
+            {fetchErrors.length > 0 && (
+              <div className="space-y-1 rounded bg-red-950/40 p-3 text-xs text-red-400">
+                {fetchErrors.map((error, index) => (
+                  <p key={index}>{error}</p>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {visiblePosts.map((post) => (
+              <PostCard key={post.id} post={post} onDismiss={dismissPost} />
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
