@@ -6,8 +6,6 @@ import { RedditPost } from "@/lib/reddit";
 import { useSavedPosts } from "@/lib/saved-posts";
 
 const CARD_SWIPE_TRIGGER = 72;
-const CARD_SWIPE_PREVIEW = 120;
-const CARD_SWIPE_START = 4;
 const SWIPE_CLICK_SUPPRESSION_MS = 250;
 
 function timeAgo(utcSeconds: number): string {
@@ -34,7 +32,6 @@ interface PostCardProps {
 export default function PostCard({ post, onDismiss }: PostCardProps) {
   const router = useRouter();
   const articleRef = useRef<HTMLElement | null>(null);
-  const frameRef = useRef<number | null>(null);
   const swipeOffsetRef = useRef(0);
   const cardTouchStartXRef = useRef<number | null>(null);
   const cardTouchStartYRef = useRef<number | null>(null);
@@ -46,6 +43,8 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const [resolvedNumComments, setResolvedNumComments] = useState(post.numComments);
   const [galleryTouchStartX, setGalleryTouchStartX] = useState<number | null>(null);
   const [galleryTouchDeltaX, setGalleryTouchDeltaX] = useState(0);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const [swipeDragging, setSwipeDragging] = useState(false);
   const [cardAction, setCardAction] = useState<"none" | "save" | "dismiss">("none");
 
   const { isSaved, toggle, unsave } = useSavedPosts();
@@ -75,26 +74,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     }
   }, [router, detailUrl, post]);
 
-  useEffect(() => {
-    return () => {
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-      }
-    };
-  }, []);
-
-  function scheduleSwipeVisual(offset: number) {
+  function updateSwipeVisual(offset: number) {
     swipeOffsetRef.current = offset;
-    if (frameRef.current !== null) return;
-    frameRef.current = requestAnimationFrame(() => {
-      frameRef.current = null;
-      if (!articleRef.current) return;
-      articleRef.current.style.transform = `translateX(${swipeOffsetRef.current}px)`;
-    });
+    setSwipeOffset(offset);
   }
 
   function resetSwipeVisual() {
-    scheduleSwipeVisual(0);
+    updateSwipeVisual(0);
+    setSwipeDragging(false);
     setCardAction("none");
   }
 
@@ -193,22 +180,20 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     const deltaX = touch.clientX - cardTouchStartXRef.current;
     const deltaY = touch.clientY - cardTouchStartYRef.current;
 
-    if (!cardSwipeActiveRef.current && Math.abs(deltaY) > Math.abs(deltaX)) {
+    if (!cardSwipeActiveRef.current && Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
       cardTouchStartXRef.current = null;
       cardTouchStartYRef.current = null;
       resetSwipeVisual();
       return;
     }
 
-    if (!cardSwipeActiveRef.current && Math.abs(deltaX) > CARD_SWIPE_START) {
-      cardSwipeActiveRef.current = true;
-    }
-
-    if (!cardSwipeActiveRef.current) return;
-
+    cardSwipeActiveRef.current = true;
+    setSwipeDragging(true);
     event.preventDefault();
-    const offset = Math.max(-CARD_SWIPE_PREVIEW, Math.min(CARD_SWIPE_PREVIEW, deltaX * 1.15));
-    scheduleSwipeVisual(offset);
+    const articleWidth = articleRef.current?.getBoundingClientRect().width ?? 0;
+    const maxOffset = Math.max(CARD_SWIPE_TRIGGER, articleWidth / 2 - 44);
+    const offset = Math.max(-maxOffset, Math.min(maxOffset, deltaX));
+    updateSwipeVisual(offset);
 
     if (offset > 0) setCardAction("save");
     else if (offset < 0 && (onDismiss || isSaved(post.id))) setCardAction("dismiss");
@@ -259,34 +244,56 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   const saved = isSaved(post.id);
   const canDismiss = Boolean(onDismiss) || saved;
-  const showSaveAction = cardAction === "save";
-  const showDismissAction = cardAction === "dismiss" && canDismiss;
+  const swipeProgress = Math.min(1, Math.abs(swipeOffset) / CARD_SWIPE_TRIGGER);
+  const activeSwipeAction =
+    swipeOffset > 0 ? "save" : swipeOffset < 0 && canDismiss ? "dismiss" : "none";
+  const swipeOverlayTint =
+    activeSwipeAction === "save"
+      ? "rgba(245, 158, 11, 0.18)"
+      : activeSwipeAction === "dismiss"
+      ? "rgba(239, 68, 68, 0.18)"
+      : "rgba(17, 24, 39, 0)";
+  const swipeBadgeClasses =
+    activeSwipeAction === "save"
+      ? "border-amber-400/70 bg-amber-400/20 text-amber-200"
+      : activeSwipeAction === "dismiss"
+      ? "border-red-400/70 bg-red-400/20 text-red-200"
+      : "border-gray-700/0 bg-gray-900/0 text-transparent";
+  const swipeBadgeSymbol =
+    activeSwipeAction === "save" ? "\u2605" : activeSwipeAction === "dismiss" ? "\u2715" : "";
 
   return (
     <div className="relative overflow-hidden rounded-lg">
       <div
-        className={`absolute inset-0 flex items-center justify-between rounded-lg border ${
-          showSaveAction
-            ? "border-amber-500/40 bg-amber-500/15"
-            : showDismissAction
-            ? "border-red-500/40 bg-red-500/15"
-            : "border-gray-800 bg-gray-900"
-        }`}
+        className="pointer-events-none absolute inset-0 z-10 overflow-hidden rounded-lg"
+        aria-hidden="true"
       >
-        <div className="flex h-full min-w-[5.5rem] items-center justify-center px-4 text-3xl text-amber-300">
-          {"\u2605"}
-        </div>
-        <div className="flex h-full min-w-[5.5rem] items-center justify-center px-4 text-3xl text-red-300">
-          {"\u2715"}
+        <div
+          className="absolute inset-0 rounded-lg transition-[background-color] duration-150"
+          style={{
+            backgroundColor: swipeOverlayTint,
+            transitionDuration: swipeDragging ? "0ms" : "150ms",
+          }}
+        />
+        <div
+          className={`absolute top-1/2 z-10 flex h-14 w-14 -translate-y-1/2 items-center justify-center rounded-full border text-3xl shadow-lg backdrop-blur-sm transition-[left,opacity,transform,background-color,border-color,color] duration-150 ${swipeBadgeClasses}`}
+          style={{
+            left: `calc(50% + ${swipeOffset}px)`,
+            opacity: swipeProgress,
+            transform: `translate(-50%, -50%) scale(${0.92 + swipeProgress * 0.08})`,
+            transitionDuration: swipeDragging ? "0ms" : "150ms",
+          }}
+        >
+          {swipeBadgeSymbol}
         </div>
       </div>
 
       <article
         ref={articleRef}
-        className={`relative rounded-lg border border-gray-800 bg-gray-900 transition-[transform,opacity] duration-150 ${
+        className={`relative rounded-lg border border-gray-800 bg-gray-900 transition-opacity duration-150 ${
           clicked ? "opacity-50" : ""
         }`}
-        style={{ touchAction: "pan-y", transform: "translateX(0px)" }}
+        style={{ touchAction: "pan-y" }}
         onTouchStart={handleCardTouchStart}
         onTouchMove={handleCardTouchMove}
         onTouchEnd={handleCardTouchEnd}
