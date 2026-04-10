@@ -42,6 +42,7 @@ export default function FeedClient() {
   const supabase = createClient();
   const dismissedIdsRef = useRef<Set<string>>(new Set());
   const requestIdRef = useRef(0);
+  const feedClearedRef = useRef(false);
   const activeFeedName = feeds.find((feed) => feed.id === activeFeedId)?.name ?? "Home Feed";
   const cacheKey = useMemo(() => getFeedCacheKey(activeFeedId), [activeFeedId]);
   const scopeToken = useMemo(
@@ -50,6 +51,7 @@ export default function FeedClient() {
   );
 
   const applyPosts = useCallback((nextPosts: RedditPost[]) => {
+    if (feedClearedRef.current) return;
     setPosts(filterDismissedPosts(nextPosts, dismissedIdsRef.current));
   }, []);
 
@@ -83,6 +85,10 @@ export default function FeedClient() {
   useEffect(() => {
     dismissedIdsRef.current = dismissedIds;
   }, [dismissedIds]);
+
+  useEffect(() => {
+    feedClearedRef.current = feedCleared;
+  }, [feedCleared]);
 
   const ready = subredditsReady && dismissedReady && feedsReady;
 
@@ -150,12 +156,14 @@ export default function FeedClient() {
   }, [feedCleared, fetchPosts, ready]);
 
   useEffect(() => {
+    feedClearedRef.current = false;
     setFeedCleared(false);
   }, [activeFeedId]);
 
   async function refreshPreparedFeed() {
     setRefreshing(true);
     setRefreshMessage(null);
+    feedClearedRef.current = false;
     setFeedCleared(false);
     setRefreshFailures([]);
     try {
@@ -201,6 +209,7 @@ export default function FeedClient() {
     setClearing(true);
     setRefreshMessage(null);
     requestIdRef.current += 1;
+    feedClearedRef.current = true;
     try {
       const res = await fetch("/api/reddit/precompute", {
         method: "POST",
@@ -280,6 +289,8 @@ export default function FeedClient() {
     );
   }
 
+  const visiblePosts = feedCleared ? [] : posts;
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900/70 px-4 py-3">
@@ -334,7 +345,7 @@ export default function FeedClient() {
             ? "Add a subreddit in the sidebar to get started"
             : "No subreddits in this feed - drag some over from another feed"}
         </p>
-      ) : posts.length === 0 ? (
+      ) : visiblePosts.length === 0 ? (
         <div className="space-y-2 py-16">
           <p className="text-center text-sm text-gray-500">
             {feedCleared ? "Feed data cleared. Refresh to rebuild this snapshot." : "No posts found"}
@@ -349,7 +360,7 @@ export default function FeedClient() {
         </div>
       ) : (
         <div className="space-y-4">
-          {posts.map((post) => (
+          {visiblePosts.map((post) => (
             <PostCard key={post.id} post={post} onDismiss={dismissPost} />
           ))}
         </div>
