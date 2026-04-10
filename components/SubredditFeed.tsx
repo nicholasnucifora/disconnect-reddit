@@ -1,7 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { USERNAME } from "@/lib/config";
 import { hydratePostsWithCommentCounts } from "@/lib/comment-counts-client";
+import {
+  filterDismissedPosts,
+  getCachedPostCollection,
+  getDismissedPostIds,
+  getSubredditCacheKey,
+  persistDismissedPost,
+  removePostFromCachedCollections,
+  setCachedPostCollection,
+} from "@/lib/post-feed-cache";
 import { RedditPost } from "@/lib/reddit";
 import PostCard from "./PostCard";
 
@@ -13,43 +24,140 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  const supabase = createClient();
+  const dismissedIdsRef = useRef<Set<string>>(new Set());
+  const requestIdRef = useRef(0);
+  const normalizedSubreddit = useMemo(() => subreddit.trim().toLowerCase(), [subreddit]);
+  const cacheKey = useMemo(() => getSubredditCacheKey(normalizedSubreddit), [normalizedSubreddit]);
+
+  const applyPosts = useCallback((nextPosts: RedditPost[]) => {
+    setPosts(filterDismissedPosts(nextPosts, dismissedIdsRef.current));
+  }, []);
+
   useEffect(() => {
-    setLoading(true);
-    setError(null);
-    setPosts([]);
-    fetch(`/api/reddit/posts?subreddits=${encodeURIComponent(subreddit)}&sort=hot`)
-      .then((r) => r.json())
-      .then(async (data) => {
-        if (data.error) setError(data.error);
-        setPosts(await hydratePostsWithCommentCounts(data.posts ?? []));
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }, [subreddit]);
+    const localIds = getDismissedPostIds();
+    dismissedIdsRef.current = localIds;
+    setPosts((prev) => filterDismissedPosts(prev, localIds));
+
+    async function syncDismissedPosts() {
+      const { data } = await supabase
+        .from("dismissed_posts")
+        .select("post_id")
+        .eq("username", USERNAME)
+        .gt("expires_at", new Date().toISOString());
+
+      const supabaseIds = new Set((data ?? []).map((row: { post_id: string }) => row.post_id));
+      dismissedIdsRef.current = new Set<string>([
+        ...Array.from(localIds),
+        ...Array.from(supabaseIds),
+      ]);
+      setPosts((prev) => filterDismissedPosts(prev, dismissedIdsRef.current));
+    }
+
+    void syncDismissedPosts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPosts() {
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      setError(null);
+
+      const cached = getCachedPostCollection(cacheKey, normalizedSubreddit);
+      if (cached) {
+        applyPosts(cached.posts);
+        setLoading(false);
+        return;
+      }
+
+      setLoading(true);
+      setPosts([]);
+
+      try {
+        const response = await fetch(
+          `/api/reddit/posts?subreddits=${encodeURIComponent(normalizedSubreddit)}&sort=hot`,
+          { cache: "no-store" }
+        );
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          throw new Error(data.error ?? "Failed to load");
+        }
+
+        const hydratedPosts = await hydratePostsWithCommentCounts(data.posts ?? []);
+        if (cancelled || requestIdRef.current !== requestId) return;
+
+        setCachedPostCollection(cacheKey, hydratedPosts, {
+          source: "subreddit",
+          scopeToken: normalizedSubreddit,
+        });
+        applyPosts(hydratedPosts);
+      } catch (fetchError) {
+        if (cancelled || requestIdRef.current !== requestId) return;
+        setError(fetchError instanceof Error ? fetchError.message : "Failed to load");
+      } finally {
+        if (!cancelled && requestIdRef.current === requestId) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadPosts();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [applyPosts, cacheKey, normalizedSubreddit]);
+
+  async function dismissPost(postId: string) {
+    const nextDismissedIds = new Set(dismissedIdsRef.current);
+    nextDismissedIds.add(postId);
+    dismissedIdsRef.current = nextDismissedIds;
+    setPosts((prev) => prev.filter((post) => post.id !== postId));
+
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 7);
+    const expiresAtIso = expiresAt.toISOString();
+
+    persistDismissedPost(postId, expiresAtIso);
+    removePostFromCachedCollections(postId);
+
+    void supabase.from("dismissed_posts").upsert(
+      {
+        username: USERNAME,
+        post_id: postId,
+        expires_at: expiresAtIso,
+      },
+      {
+        onConflict: "username,post_id",
+      }
+    );
+  }
 
   return (
     <main className="min-h-screen bg-gray-950">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <h1 className="text-xl font-bold text-teal-400 mb-6">r/{subreddit}</h1>
+      <div className="mx-auto max-w-4xl px-4 py-8">
+        <h1 className="mb-6 text-xl font-bold text-teal-400">r/{subreddit}</h1>
 
         {loading && (
           <div className="flex items-center justify-center py-16">
-            <div className="w-6 h-6 border-2 border-teal-500 border-t-transparent rounded-full animate-spin" />
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-teal-500 border-t-transparent" />
           </div>
         )}
 
-        {error && (
-          <p className="text-red-400 text-sm text-center py-8">{error}</p>
-        )}
+        {error && <p className="py-8 text-center text-sm text-red-400">{error}</p>}
 
         {!loading && !error && posts.length === 0 && (
-          <p className="text-gray-500 text-sm text-center py-8">No posts found</p>
+          <p className="py-8 text-center text-sm text-gray-500">No posts found</p>
         )}
 
         {posts.length > 0 && (
           <div className="space-y-4">
             {posts.map((post) => (
-              <PostCard key={post.id} post={post} />
+              <PostCard key={post.id} post={post} onDismiss={dismissPost} />
             ))}
           </div>
         )}

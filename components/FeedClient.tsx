@@ -1,11 +1,22 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
+import {
+  clearCachedPostCollection,
+  filterDismissedPosts,
+  getCachedPostCollection,
+  getDismissedPostIds,
+  getFeedCacheKey,
+  persistDismissedPost,
+  removeDismissedPost,
+  removePostFromCachedCollections,
+  setCachedPostCollection,
+} from "@/lib/post-feed-cache";
 import { RedditPost } from "@/lib/reddit";
-import { useSubreddits } from "@/lib/subreddits-context";
 import { useFeeds } from "@/lib/feeds-context";
+import { useSubreddits } from "@/lib/subreddits-context";
 import PostCard from "./PostCard";
 
 export default function FeedClient() {
@@ -29,57 +40,113 @@ export default function FeedClient() {
   >([]);
 
   const supabase = createClient();
+  const dismissedIdsRef = useRef<Set<string>>(new Set());
+  const requestIdRef = useRef(0);
+  const activeFeedName = feeds.find((feed) => feed.id === activeFeedId)?.name ?? "Home Feed";
+  const cacheKey = useMemo(() => getFeedCacheKey(activeFeedId), [activeFeedId]);
+  const scopeToken = useMemo(
+    () => activeSubs.map((subreddit) => subreddit.trim().toLowerCase()).sort().join("|"),
+    [activeSubs]
+  );
+
+  const applyPosts = useCallback((nextPosts: RedditPost[]) => {
+    setPosts(filterDismissedPosts(nextPosts, dismissedIdsRef.current));
+  }, []);
 
   useEffect(() => {
-    async function init() {
+    const localIds = getDismissedPostIds();
+    dismissedIdsRef.current = localIds;
+    setDismissedIds(localIds);
+    setDismissedReady(true);
+
+    async function syncDismissedPosts() {
       const { data } = await supabase
         .from("dismissed_posts")
         .select("post_id")
         .eq("username", USERNAME)
         .gt("expires_at", new Date().toISOString());
 
-      const supabaseIds = (data ?? []).map((r: { post_id: string }) => r.post_id);
-      let localIds: string[] = [];
-      try {
-        localIds = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
-      } catch { /* ignore */ }
-
-      setDismissedIds(new Set([...supabaseIds, ...localIds]));
-      setDismissedReady(true);
+      const supabaseIds = new Set((data ?? []).map((row: { post_id: string }) => row.post_id));
+      const mergedIds = new Set<string>([
+        ...Array.from(localIds),
+        ...Array.from(supabaseIds),
+      ]);
+      dismissedIdsRef.current = mergedIds;
+      setDismissedIds(mergedIds);
+      setPosts((prev) => filterDismissedPosts(prev, mergedIds));
     }
-    init();
+
+    void syncDismissedPosts();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const ready = subredditsReady && dismissedReady && feedsReady;
-  const fetchPosts = useCallback(async () => {
-    if (activeSubs.length === 0) {
-      setPosts([]);
-      return;
-    }
+  useEffect(() => {
+    dismissedIdsRef.current = dismissedIds;
+  }, [dismissedIds]);
 
-    setLoading(true);
-    setFetchErrors([]);
-    try {
-      const res = await fetch(
-        `/api/reddit/feed?feedId=${encodeURIComponent(activeFeedId)}&ts=${Date.now()}`,
-        { cache: "no-store" }
-      );
-      if (!res.ok) throw new Error("Failed to fetch posts");
-      const json = await res.json();
-      const fetched: RedditPost[] = json.posts ?? [];
-      setFetchErrors(json.errors ?? []);
-      setRefreshFailures([]);
-      setPosts(fetched.filter((p) => !dismissedIds.has(p.id)));
-    } catch (e) {
-      setFetchErrors([e instanceof Error ? e.message : "Unknown error"]);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeFeedId, activeSubs, dismissedIds]);
+  const ready = subredditsReady && dismissedReady && feedsReady;
+
+  const fetchPosts = useCallback(
+    async (options: { forceRefresh?: boolean } = {}) => {
+      if (activeSubs.length === 0) {
+        setPosts([]);
+        setLoading(false);
+        return;
+      }
+
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+
+      if (!options.forceRefresh) {
+        const cached = getCachedPostCollection(cacheKey, scopeToken);
+        if (cached) {
+          applyPosts(cached.posts);
+          setFetchErrors([]);
+          setRefreshFailures([]);
+          setFeedCleared(false);
+          setLoading(false);
+          return;
+        }
+      }
+
+      setLoading(true);
+      setFetchErrors([]);
+      try {
+        const res = await fetch(`/api/reddit/feed?feedId=${encodeURIComponent(activeFeedId)}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to fetch posts");
+
+        const json = await res.json();
+        const fetched: RedditPost[] = json.posts ?? [];
+
+        if (requestIdRef.current !== requestId) return;
+
+        setCachedPostCollection(cacheKey, fetched, {
+          generatedAt: json.generatedAt,
+          source: json.source,
+          scopeToken,
+        });
+        setFetchErrors(json.errors ?? []);
+        setRefreshFailures([]);
+        setFeedCleared(false);
+        applyPosts(fetched);
+      } catch (error) {
+        if (requestIdRef.current !== requestId) return;
+        setFetchErrors([error instanceof Error ? error.message : "Unknown error"]);
+      } finally {
+        if (requestIdRef.current === requestId) {
+          setLoading(false);
+        }
+      }
+    },
+    [activeFeedId, activeSubs.length, applyPosts, cacheKey, scopeToken]
+  );
 
   useEffect(() => {
-    if (ready && !feedCleared) fetchPosts();
+    if (ready && !feedCleared) {
+      void fetchPosts();
+    }
   }, [feedCleared, fetchPosts, ready]);
 
   useEffect(() => {
@@ -105,12 +172,10 @@ export default function FeedClient() {
         throw new Error(body.error ?? "Failed to refresh prepared feed");
       }
 
-      await fetchPosts();
+      await fetchPosts({ forceRefresh: true });
       const failedRefreshes = Array.isArray(body.failedRefreshes) ? body.failedRefreshes : [];
       if (failedRefreshes.length > 0) {
-        const titleMap = new Map(
-          posts.map((post) => [post.id, post.title] as const)
-        );
+        const titleMap = new Map(posts.map((post) => [post.id, post.title] as const));
         setRefreshFailures(
           failedRefreshes.map((entry: { postId: string; subreddit: string; error: string }) => ({
             ...entry,
@@ -123,8 +188,10 @@ export default function FeedClient() {
           ? `Prepared ${body.postCount ?? 0} posts with ${failedRefreshes.length} refresh failures.`
           : `Prepared ${body.postCount ?? 0} posts just now.`
       );
-    } catch (err) {
-      setRefreshMessage(err instanceof Error ? err.message : "Failed to refresh prepared feed");
+    } catch (error) {
+      setRefreshMessage(
+        error instanceof Error ? error.message : "Failed to refresh prepared feed"
+      );
     } finally {
       setRefreshing(false);
     }
@@ -147,50 +214,57 @@ export default function FeedClient() {
         throw new Error(body.error ?? "Failed to clear prepared feed");
       }
 
+      clearCachedPostCollection(cacheKey);
       setPosts([]);
       setFetchErrors([]);
       setFeedCleared(true);
       setRefreshMessage(`Cleared ${body.deletedSnapshots ?? 0} stored snapshots for this feed.`);
-    } catch (err) {
-      setRefreshMessage(err instanceof Error ? err.message : "Failed to clear prepared feed");
+    } catch (error) {
+      setRefreshMessage(error instanceof Error ? error.message : "Failed to clear prepared feed");
     } finally {
       setClearing(false);
     }
   }
 
   async function dismissPost(postId: string) {
-    setDismissedIds((prev) => new Set(Array.from(prev).concat(postId)));
-    setPosts((prev) => prev.filter((p) => p.id !== postId));
-
-    try {
-      const local = JSON.parse(sessionStorage.getItem("localDismissed") ?? "[]");
-      if (!local.includes(postId)) {
-        local.push(postId);
-        sessionStorage.setItem("localDismissed", JSON.stringify(local));
-      }
-    } catch { /* ignore */ }
+    const nextDismissedIds = new Set(dismissedIdsRef.current);
+    nextDismissedIds.add(postId);
+    dismissedIdsRef.current = nextDismissedIds;
+    setDismissedIds(nextDismissedIds);
+    setPosts((prev) => prev.filter((post) => post.id !== postId));
 
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7);
-    supabase.from("dismissed_posts").insert({
-      username: USERNAME,
-      post_id: postId,
-      expires_at: expiresAt.toISOString(),
-    });
+    const expiresAtIso = expiresAt.toISOString();
+
+    persistDismissedPost(postId, expiresAtIso);
+    removePostFromCachedCollections(postId);
+
+    void supabase.from("dismissed_posts").upsert(
+      {
+        username: USERNAME,
+        post_id: postId,
+        expires_at: expiresAtIso,
+      },
+      {
+        onConflict: "username,post_id",
+      }
+    );
   }
 
   useEffect(() => {
-    function handleUndismiss(e: Event) {
-      const post = (e as CustomEvent<RedditPost>).detail;
+    function handleUndismiss(event: Event) {
+      const post = (event as CustomEvent<RedditPost>).detail;
       setDismissedIds((prev) => {
-        const next = new Set(Array.from(prev));
+        const next = new Set(prev);
         next.delete(post.id);
+        dismissedIdsRef.current = next;
         return next;
       });
-      setPosts((prev) =>
-        [post, ...prev].sort((a, b) => b.createdUtc - a.createdUtc)
-      );
+      removeDismissedPost(post.id);
+      setPosts((prev) => [post, ...prev].sort((a, b) => b.createdUtc - a.createdUtc));
     }
+
     window.addEventListener("undismissPost", handleUndismiss);
     return () => window.removeEventListener("undismissPost", handleUndismiss);
   }, []);
@@ -198,7 +272,7 @@ export default function FeedClient() {
   if (!ready) {
     return (
       <div className="flex items-center justify-center py-16">
-        <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+        <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
       </div>
     );
   }
@@ -207,9 +281,7 @@ export default function FeedClient() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-800 bg-gray-900/70 px-4 py-3">
         <div>
-          <p className="text-sm font-medium text-gray-200">
-            {feeds.find((feed) => feed.id === activeFeedId)?.name ?? "Home Feed"}
-          </p>
+          <p className="text-sm font-medium text-gray-200">{activeFeedName}</p>
           <p className="text-xs text-gray-500">
             Rebuild this feed snapshot now to test fresh comment counts.
           </p>
@@ -232,9 +304,7 @@ export default function FeedClient() {
         </div>
       </div>
 
-      {refreshMessage && (
-        <p className="text-sm text-gray-400">{refreshMessage}</p>
-      )}
+      {refreshMessage && <p className="text-sm text-gray-400">{refreshMessage}</p>}
 
       {refreshFailures.length > 0 && (
         <div className="rounded-lg border border-amber-800/60 bg-amber-950/30 p-3 text-sm text-amber-200">
@@ -242,8 +312,9 @@ export default function FeedClient() {
           <div className="mt-2 space-y-1 text-xs text-amber-100/90">
             {refreshFailures.slice(0, 8).map((failure) => (
               <p key={failure.postId}>
-                r/{failure.subreddit} {failure.title ? `- ${failure.title}` : `- ${failure.postId}`} ({failure.postId})
-                : {failure.error}
+                r/{failure.subreddit}{" "}
+                {failure.title ? `- ${failure.title}` : `- ${failure.postId}`} ({failure.postId}):
+                {" "}{failure.error}
               </p>
             ))}
           </div>
@@ -252,33 +323,31 @@ export default function FeedClient() {
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
         </div>
       ) : activeSubs.length === 0 ? (
-        <p className="text-center text-gray-500 py-16 text-sm">
+        <p className="py-16 text-center text-sm text-gray-500">
           {subreddits.length === 0
             ? "Add a subreddit in the sidebar to get started"
-            : "No subreddits in this feed — drag some over from another feed"}
+            : "No subreddits in this feed - drag some over from another feed"}
         </p>
       ) : posts.length === 0 ? (
-        <div className="py-16 space-y-2">
-          <p className="text-center text-gray-500 text-sm">
+        <div className="space-y-2 py-16">
+          <p className="text-center text-sm text-gray-500">
             {feedCleared ? "Feed data cleared. Refresh to rebuild this snapshot." : "No posts found"}
           </p>
           {fetchErrors.length > 0 && (
-            <div className="text-xs text-red-400 bg-red-950/40 rounded p-3 space-y-1">
-              {fetchErrors.map((e, i) => <p key={i}>{e}</p>)}
+            <div className="space-y-1 rounded bg-red-950/40 p-3 text-xs text-red-400">
+              {fetchErrors.map((error, index) => (
+                <p key={index}>{error}</p>
+              ))}
             </div>
           )}
         </div>
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
-            <PostCard
-              key={post.id}
-              post={post}
-              onDismiss={dismissPost}
-            />
+            <PostCard key={post.id} post={post} onDismiss={dismissPost} />
           ))}
         </div>
       )}
