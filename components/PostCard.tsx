@@ -163,7 +163,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   function handleCardTouchStart(event: React.TouchEvent<HTMLElement>) {
     const target = event.target as HTMLElement | null;
-    if (target?.closest("button")) return;
+    if (target?.closest("[data-card-swipe-ignore='true']")) return;
     if (isMultiImageGallery && target?.closest("[data-gallery-swipe='true']")) return;
     const touch = event.touches[0];
     if (!touch) return;
@@ -326,6 +326,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                   <button
                     type="button"
                     onClick={handleToggleSaved}
+                    data-card-swipe-ignore="true"
                     aria-label={saved ? "Remove from saved posts" : "Save post"}
                     title={saved ? "Saved" : "Save post"}
                     className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-xl transition-colors ${
@@ -339,6 +340,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                   <button
                     type="button"
                     onClick={handleDismissClick}
+                    data-card-swipe-ignore="true"
                     aria-label={canDismiss ? "Remove post" : "Remove unavailable"}
                     title={canDismiss ? "Remove post" : "Remove unavailable"}
                     disabled={!canDismiss}
