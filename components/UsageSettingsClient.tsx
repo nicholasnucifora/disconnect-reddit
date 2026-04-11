@@ -227,10 +227,19 @@ export default function UsageSettingsClient() {
 
       let subredditError: Error | null = null;
       if (subredditPayload.length > 0) {
-        const result = await supabase
-          .from("user_subreddits")
-          .upsert(subredditPayload, { onConflict: "username,subreddit" });
-        subredditError = result.error;
+        const results = await Promise.all(
+          subredditPayload.map((entry) =>
+            supabase
+              .from("user_subreddits")
+              .update({
+                max_posts: entry.max_posts,
+                min_comments: entry.min_comments,
+              })
+              .eq("username", entry.username)
+              .eq("subreddit", entry.subreddit)
+          )
+        );
+        subredditError = results.find((result) => result.error)?.error ?? null;
       }
 
       if (subredditError) {
@@ -275,8 +284,8 @@ export default function UsageSettingsClient() {
           ? "Saved. Feed snapshots were not cleared automatically."
           : "Saved."
       );
-    } catch {
-      setMessage("Could not save settings.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save settings.");
     } finally {
       setSaving(false);
     }
