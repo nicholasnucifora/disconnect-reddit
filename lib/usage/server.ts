@@ -431,6 +431,23 @@ function getLimitForDate(
   return schedule?.daily_allowance_seconds ?? globalLimit ?? null;
 }
 
+function buildDateRange(
+  startKey: string,
+  totalDays: number,
+  timeZone: string,
+): string[] {
+  const [year, month, day] = startKey.split("-").map(Number);
+  const cursor = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const dates: string[] = [];
+
+  for (let index = 0; index < totalDays; index += 1) {
+    dates.push(getLocalDateKey(cursor, timeZone));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return dates;
+}
+
 export async function getUsageHistory(
   rangeDays: number,
   now = new Date(),
@@ -493,13 +510,30 @@ export async function getUsageHistory(
     chartMap.set(event.usage_date, day);
   }
 
-  const chart = Array.from(chartMap.values())
-    .map((day) => ({
-      ...day,
-      feedSegments: day.feedSegments.sort((a, b) => b.seconds - a.seconds),
-      subredditSegments: day.subredditSegments.sort((a, b) => b.seconds - a.seconds),
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const chart = buildDateRange(startKey, safeRange, timeZone).map((dateKey) => {
+    const existingDay = chartMap.get(dateKey);
+
+    if (!existingDay) {
+      return {
+        date: dateKey,
+        usageSeconds: 0,
+        limitSeconds: getLimitForDate(
+          dateKey,
+          schedules,
+          ensureDailyLimit(settings.daily_limit_seconds),
+          timeZone,
+        ),
+        feedSegments: [],
+        subredditSegments: [],
+      } satisfies UsageChartDay;
+    }
+
+    return {
+      ...existingDay,
+      feedSegments: existingDay.feedSegments.sort((a, b) => b.seconds - a.seconds),
+      subredditSegments: existingDay.subredditSegments.sort((a, b) => b.seconds - a.seconds),
+    };
+  });
 
   const totalSeconds = chart.reduce((sum, day) => sum + day.usageSeconds, 0);
   const activeDays = chart.filter((day) => day.usageSeconds > 0).length;

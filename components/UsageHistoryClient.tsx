@@ -7,19 +7,55 @@ import { formatDurationCompact } from "@/lib/usage/time";
 import type { UsageChartDay, UsageHistoryPayload } from "@/lib/usage/types";
 
 const RANGE_OPTIONS = [7, 30, 90] as const;
-const FEED_COLORS = [
-  "bg-teal-400",
-  "bg-sky-400",
-  "bg-amber-400",
-  "bg-pink-400",
-  "bg-violet-400",
-  "bg-emerald-400",
-];
+const FEED_COLORS = ["#60a5fa", "#fb7185", "#4ade80", "#a78bfa", "#f472b6", "#38bdf8"];
+const OTHER_SEGMENT_COLOR = "#64748b";
+const CHART_OTHER_THRESHOLD = 0.15;
+
+type ChartSegment = {
+  key: string;
+  label: string;
+  seconds: number;
+  color: string;
+};
 
 function getFeedColor(feedId: string) {
   let hash = 0;
   for (const char of feedId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
   return FEED_COLORS[hash % FEED_COLORS.length];
+}
+
+function getChartSegments(day: UsageChartDay): ChartSegment[] {
+  if (day.usageSeconds <= 0) return [];
+
+  let otherSeconds = 0;
+  const prominentSegments: ChartSegment[] = [];
+
+  for (const segment of day.feedSegments) {
+    const share = segment.seconds / day.usageSeconds;
+
+    if (share < CHART_OTHER_THRESHOLD) {
+      otherSeconds += segment.seconds;
+      continue;
+    }
+
+    prominentSegments.push({
+      key: `${day.date}-${segment.feedId}`,
+      label: segment.feedName,
+      seconds: segment.seconds,
+      color: getFeedColor(segment.feedId),
+    });
+  }
+
+  if (otherSeconds > 0) {
+    prominentSegments.push({
+      key: `${day.date}-other`,
+      label: "Other",
+      seconds: otherSeconds,
+      color: OTHER_SEGMENT_COLOR,
+    });
+  }
+
+  return prominentSegments.sort((a, b) => b.seconds - a.seconds);
 }
 
 function formatResetDistance(resetAt: string) {
@@ -69,11 +105,7 @@ export default function UsageHistoryClient() {
 
   const selectedDay = useMemo(() => {
     if (!data) return null;
-    return (
-      data.chart.find((day) => day.date === selectedDate) ??
-      data.chart[data.chart.length - 1] ??
-      null
-    );
+    return data.chart.find((day) => day.date === selectedDate) ?? data.chart[data.chart.length - 1] ?? null;
   }, [data, selectedDate]);
 
   return (
@@ -124,8 +156,8 @@ export default function UsageHistoryClient() {
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-white">Daily usage chart</h2>
-              <p className="mt-1 text-sm text-gray-400">
-                Bars are stacked by feed. Limit markers show the day&apos;s effective allowance.
+              <p className="mt-1 max-w-2xl text-sm text-gray-400">
+                Hover a color band to see its feed. Feeds under 15% of a day collapse into Other on the chart, and selecting a day shows the exact breakdown below.
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
@@ -134,7 +166,7 @@ export default function UsageHistoryClient() {
                 Current day
               </span>
               <span className="flex items-center gap-2">
-                <span className="h-0.5 w-4 bg-amber-400" />
+                <span className="h-0.5 w-4 bg-slate-200" />
                 Daily limit
               </span>
               <span className="flex items-center gap-2">
@@ -210,44 +242,92 @@ function UsageChart({
   onSelectDate: (date: string) => void;
   todayKey: string;
 }) {
+  const [hoveredSegmentKey, setHoveredSegmentKey] = useState<string | null>(null);
+  const chartWidth = Math.max(720, data.length * 42);
+
   return (
     <div className="mt-8 overflow-x-auto">
-      <div className="min-w-[720px]">
-        <div className="flex h-80 items-end gap-3">
+      <div className="relative" style={{ minWidth: `${chartWidth}px` }}>
+        <div className="pointer-events-none absolute inset-x-0 top-0 bottom-10">
+          {[0, 25, 50, 75, 100].map((mark) => (
+            <div
+              key={mark}
+              className={`absolute inset-x-0 border-t ${mark === 0 ? "border-gray-800" : "border-white/8"}`}
+              style={{ bottom: `${mark}%` }}
+            />
+          ))}
+        </div>
+
+        <div className="relative flex h-80 items-end gap-2">
           {data.map((day) => {
+            const chartSegments = getChartSegments(day);
             const limitHeight = day.limitSeconds ? (day.limitSeconds / maxValue) * 100 : null;
             const isToday = day.date === todayKey;
             const exceeded = day.limitSeconds != null && day.usageSeconds > day.limitSeconds;
+            const hoveredSegment = chartSegments.find((segment) => segment.key === hoveredSegmentKey) ?? null;
 
             return (
               <button
                 key={day.date}
                 onClick={() => onSelectDate(day.date)}
-                className={`group relative flex flex-1 flex-col justify-end rounded-2xl border px-2 py-3 text-left transition-colors ${
-                  selectedDate === day.date
-                    ? "border-teal-400 bg-gray-950"
-                    : "border-gray-800 bg-gray-950/70 hover:border-gray-700"
-                }`}
+                className="group relative flex h-full flex-1 flex-col justify-end text-left"
+                aria-label={`${formatDay(day.date)}: ${formatDurationCompact(day.usageSeconds)}`}
               >
-                <div className="relative h-60">
+                <div
+                  className={`relative h-64 overflow-hidden rounded-[1.4rem] bg-gray-950/80 ring-1 ring-inset transition-all ${
+                    selectedDate === day.date
+                      ? "ring-2 ring-teal-400/90"
+                      : exceeded
+                      ? "ring-red-400/45"
+                      : "ring-white/8 group-hover:ring-white/18"
+                  }`}
+                >
+                  {hoveredSegment && (
+                    <div className="pointer-events-none absolute left-2 right-2 top-2 z-20 rounded-xl border border-white/10 bg-gray-950/95 px-3 py-2 shadow-2xl shadow-black/40">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium text-white">{hoveredSegment.label}</span>
+                        <span className="text-xs text-gray-300">
+                          {formatDurationCompact(hoveredSegment.seconds)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
                   {limitHeight != null && (
                     <div
-                      className="absolute left-0 right-0 z-10 border-t-2 border-amber-400/90"
+                      className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-slate-200/85"
                       style={{ bottom: `${limitHeight}%` }}
                     />
                   )}
-                  <div className="absolute inset-x-0 bottom-0 flex h-full flex-col justify-end overflow-hidden rounded-xl bg-gray-900">
-                    {day.feedSegments.map((segment) => (
-                      <div
-                        key={`${day.date}-${segment.feedId}`}
-                        className={getFeedColor(segment.feedId)}
-                        style={{ height: `${(segment.seconds / maxValue) * 100}%` }}
-                      />
-                    ))}
-                    {day.usageSeconds === 0 && <div className="h-1 rounded-xl bg-gray-800" />}
+
+                  <div className="absolute inset-0 flex flex-col justify-end overflow-hidden">
+                    {chartSegments.length === 0 ? (
+                      <div className="h-1.5 bg-gray-800" />
+                    ) : (
+                      chartSegments.map((segment) => {
+                        const isHovered = hoveredSegmentKey === segment.key;
+                        const isMuted = hoveredSegmentKey != null && !isHovered;
+
+                        return (
+                          <div
+                            key={segment.key}
+                            title={`${segment.label}: ${formatDurationCompact(segment.seconds)}`}
+                            onMouseEnter={() => setHoveredSegmentKey(segment.key)}
+                            onMouseLeave={() => setHoveredSegmentKey((current) => (current === segment.key ? null : current))}
+                            className="relative transition-opacity duration-150"
+                            style={{
+                              height: `${(segment.seconds / maxValue) * 100}%`,
+                              backgroundColor: segment.color,
+                              opacity: isMuted ? 0.32 : 1,
+                            }}
+                          />
+                        );
+                      })
+                    )}
                   </div>
                 </div>
-                <div className="mt-3">
+
+                <div className="mt-3 px-1">
                   <div className="flex items-center justify-between gap-2">
                     <span className={`text-xs ${isToday ? "text-teal-300" : "text-gray-500"}`}>
                       {formatDay(day.date)}
@@ -289,6 +369,9 @@ function BreakdownPanel({ day }: { day: UsageChartDay }) {
         <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-gray-500">
           Feed breakdown
         </h4>
+        <p className="mt-2 text-sm text-gray-500">
+          Small chart slices roll into Other, but every tracked feed for this day is listed here.
+        </p>
         <div className="mt-4 space-y-3">
           {day.feedSegments.length === 0 ? (
             <p className="text-sm text-gray-500">No tracked feed activity for this day.</p>
@@ -297,15 +380,21 @@ function BreakdownPanel({ day }: { day: UsageChartDay }) {
               <div key={segment.feedId} className="rounded-2xl border border-gray-800 bg-gray-950/70 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <span className={`h-3 w-3 rounded-full ${getFeedColor(segment.feedId)}`} />
+                    <span
+                      className="h-3 w-3 rounded-full"
+                      style={{ backgroundColor: getFeedColor(segment.feedId) }}
+                    />
                     <span className="font-medium text-white">{segment.feedName}</span>
                   </div>
                   <span className="text-sm text-gray-300">{formatDurationCompact(segment.seconds)}</span>
                 </div>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-gray-800">
                   <div
-                    className={`h-full rounded-full ${getFeedColor(segment.feedId)}`}
-                    style={{ width: `${day.usageSeconds ? (segment.seconds / day.usageSeconds) * 100 : 0}%` }}
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${day.usageSeconds ? (segment.seconds / day.usageSeconds) * 100 : 0}%`,
+                      backgroundColor: getFeedColor(segment.feedId),
+                    }}
                   />
                 </div>
               </div>
@@ -325,7 +414,10 @@ function BreakdownPanel({ day }: { day: UsageChartDay }) {
             </p>
           ) : (
             day.subredditSegments.slice(0, 8).map((segment) => (
-              <div key={`${segment.feedId}-${segment.subreddit}`} className="flex items-center justify-between rounded-2xl border border-gray-800 bg-gray-950/70 px-4 py-3">
+              <div
+                key={`${segment.feedId}-${segment.subreddit}`}
+                className="flex items-center justify-between rounded-2xl border border-gray-800 bg-gray-950/70 px-4 py-3"
+              >
                 <div>
                   <div className="font-medium text-white">r/{segment.subreddit}</div>
                   <div className="text-xs text-gray-500">{segment.feedName}</div>
