@@ -94,8 +94,11 @@ export interface UsageChartDay {
   }>;
 }
 
+export type UsageHistoryRangeMode = "recent" | "overall";
+
 export interface UsageHistoryPayload {
-  rangeDays: number;
+  rangeMode: UsageHistoryRangeMode;
+  trackedSince: string | null;
   resetAt: string;
   stats: {
     totalSeconds: number;

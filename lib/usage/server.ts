@@ -6,6 +6,7 @@ import {
   type UsageChartDay,
   type UsageEventRow,
   type UsageHistoryPayload,
+  type UsageHistoryRangeMode,
   type UsageScheduleRow,
   type UsageScheduleWindowRow,
   type UsageScheduleWithWindows,
@@ -27,6 +28,7 @@ import {
 
 type ScheduleCandidate = UsageScheduleWithWindows | null;
 const DEFAULT_DAILY_LIMIT_SECONDS = 60 * 60;
+const RECENT_HISTORY_DAYS = 30;
 
 function clampSeconds(value: number): number {
   return Math.max(0, Math.min(Math.floor(value), 300));
@@ -448,25 +450,62 @@ function buildDateRange(
   return dates;
 }
 
+function getDateSpanDaysInclusive(startKey: string, endKey: string): number {
+  const [startYear, startMonth, startDay] = startKey.split("-").map(Number);
+  const [endYear, endMonth, endDay] = endKey.split("-").map(Number);
+  const startMs = Date.UTC(startYear, startMonth - 1, startDay, 12, 0, 0);
+  const endMs = Date.UTC(endYear, endMonth - 1, endDay, 12, 0, 0);
+  return Math.max(1, Math.floor((endMs - startMs) / (24 * 60 * 60 * 1000)) + 1);
+}
+
 export async function getUsageHistory(
-  rangeDays: number,
+  rangeMode: UsageHistoryRangeMode,
   now = new Date(),
 ): Promise<UsageHistoryPayload> {
-  const safeRange = [7, 30, 90].includes(rangeDays) ? rangeDays : 30;
+  const safeMode: UsageHistoryRangeMode = rangeMode === "overall" ? "overall" : "recent";
   const [settings, schedules] = await Promise.all([ensureSettings(now), getSchedules()]);
   const timeZone = normalizeTimeZone(settings.timezone);
-  const startDate = new Date(now.getTime() - (safeRange - 1) * 24 * 60 * 60 * 1000);
-  const startKey = getLocalDateKey(startDate, timeZone);
+  const todayKey = getLocalDateKey(now, timeZone);
 
   const supabase = createClient();
-  const { data } = await supabase
+  const firstTrackedResult = await supabase
     .from("reddit_usage_events")
-    .select("username, occurred_at, usage_date, seconds, feed_id, feed_name, subreddit")
+    .select("usage_date")
     .eq("username", USERNAME)
-    .gte("usage_date", startKey)
-    .order("usage_date", { ascending: true });
+    .order("usage_date", { ascending: true })
+    .limit(1)
+    .maybeSingle();
 
-  const events = (data as UsageEventRow[] | null) ?? [];
+  if (firstTrackedResult.error) {
+    throw new Error(`load first tracked usage date: ${firstTrackedResult.error.message}`);
+  }
+
+  const firstTrackedDate = firstTrackedResult.data?.usage_date ?? null;
+  const recentStartDate = new Date(now.getTime() - (RECENT_HISTORY_DAYS - 1) * 24 * 60 * 60 * 1000);
+  const recentStartKey = getLocalDateKey(recentStartDate, timeZone);
+  const startKey =
+    firstTrackedDate == null
+      ? null
+      : safeMode === "overall"
+      ? firstTrackedDate
+      : firstTrackedDate > recentStartKey
+      ? firstTrackedDate
+      : recentStartKey;
+  const eventsResult =
+    startKey == null
+      ? { data: [] as UsageEventRow[] | null, error: null }
+      : await supabase
+          .from("reddit_usage_events")
+          .select("username, occurred_at, usage_date, seconds, feed_id, feed_name, subreddit")
+          .eq("username", USERNAME)
+          .gte("usage_date", startKey)
+          .order("usage_date", { ascending: true });
+
+  if (eventsResult.error) {
+    throw new Error(`load reddit_usage_events: ${eventsResult.error.message}`);
+  }
+
+  const events = (eventsResult.data as UsageEventRow[] | null) ?? [];
   const chartMap = new Map<string, UsageChartDay>();
 
   for (const event of events) {
@@ -510,7 +549,14 @@ export async function getUsageHistory(
     chartMap.set(event.usage_date, day);
   }
 
-  const chart = buildDateRange(startKey, safeRange, timeZone).map((dateKey) => {
+  const chart =
+    startKey == null
+      ? []
+      : buildDateRange(
+          startKey,
+          getDateSpanDaysInclusive(startKey, todayKey),
+          timeZone,
+        ).map((dateKey) => {
     const existingDay = chartMap.get(dateKey);
 
     if (!existingDay) {
@@ -539,7 +585,8 @@ export async function getUsageHistory(
   const activeDays = chart.filter((day) => day.usageSeconds > 0).length;
 
   return {
-    rangeDays: safeRange,
+    rangeMode: safeMode,
+    trackedSince: firstTrackedDate,
     resetAt: settings.daily_reset_at,
     stats: {
       totalSeconds,
