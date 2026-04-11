@@ -7,7 +7,7 @@ import { formatDurationCompact } from "@/lib/usage/time";
 
 export default function UsageGate({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { status, isBlocked, isLimitReached } = useUsage();
+  const { status, isBlocked, isLimitReached, isOpenLimitReached } = useUsage();
 
   if (
     pathname.startsWith("/usage") ||
@@ -25,8 +25,12 @@ export default function UsageGate({ children }: { children: React.ReactNode }) {
     Math.floor((new Date(status.dailyResetAt).getTime() - Date.now()) / 1000),
   );
 
-  const title = isBlocked ? "Reddit is blocked right now" : "Daily Reddit limit reached";
-  const description = isBlocked
+  const title = status.isBlockedBySchedule
+    ? "Reddit is blocked right now"
+    : isOpenLimitReached
+    ? "Daily open limit reached"
+    : "Daily Reddit limit reached";
+  const description = status.isBlockedBySchedule
     ? status.nextWindowOpensAt
       ? `Your next scheduled browsing window opens at ${new Intl.DateTimeFormat([], {
           timeZone: status.timezone,
@@ -34,6 +38,10 @@ export default function UsageGate({ children }: { children: React.ReactNode }) {
           minute: "2-digit",
         }).format(new Date(status.nextWindowOpensAt))}.`
       : "There are no more scheduled browsing windows left today."
+    : isOpenLimitReached
+    ? status.dailyOpenLimit == null
+      ? "You have no daily open limit configured, but this session could not be registered."
+      : `You have used ${status.dailyOpenCount} of ${status.dailyOpenLimit} opens today. New opens unlock after reset in ${formatDurationCompact(resetSeconds)}.`
     : `Your allowance resets in ${formatDurationCompact(resetSeconds)}.`;
 
   return (
@@ -54,7 +62,7 @@ export default function UsageGate({ children }: { children: React.ReactNode }) {
               Open usage history
             </Link>
             <p className="text-xs text-gray-500">
-              Schedule windows and daily allowance are enforced separately.
+              Schedule windows, time allowance, and daily opens are enforced separately.
             </p>
           </div>
         </div>

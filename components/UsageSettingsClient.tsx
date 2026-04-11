@@ -37,6 +37,17 @@ function fromMinutes(value: string) {
   return Math.round(parsed * 60);
 }
 
+function toCountLimit(value: number | null) {
+  if (value == null) return "";
+  return String(Math.floor(value));
+}
+
+function fromCountLimit(value: string) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.floor(parsed);
+}
+
 function normalizeTime(value: string) {
   if (!value) return "09:00:00";
   return value.length === 5 ? `${value}:00` : value;
@@ -73,6 +84,7 @@ export default function UsageSettingsClient() {
   const [message, setMessage] = useState<string | null>(null);
   const [timezone, setTimezone] = useState("Australia/Brisbane");
   const [dailyLimitMinutes, setDailyLimitMinutes] = useState("60");
+  const [dailyOpenLimit, setDailyOpenLimit] = useState("");
   const [schedules, setSchedules] = useState<UsageScheduleWithWindows[]>([]);
   const [subredditRules, setSubredditRules] = useState<
     Record<string, { maxPosts: string; minComments: string }>
@@ -90,6 +102,7 @@ export default function UsageSettingsClient() {
         if (ignore) return;
         setTimezone(payload.timezone);
         setDailyLimitMinutes(toMinutes(payload.dailyLimitSeconds) || "60");
+        setDailyOpenLimit(toCountLimit(payload.dailyOpenLimit));
         setSchedules(payload.schedules);
       } finally {
         if (!ignore) setLoading(false);
@@ -180,6 +193,7 @@ export default function UsageSettingsClient() {
       const payload: UsageSettingsPayload = {
         timezone,
         dailyLimitSeconds: fromMinutes(dailyLimitMinutes) ?? 3600,
+        dailyOpenLimit: fromCountLimit(dailyOpenLimit),
         schedules: schedules.map((schedule, index) => ({
           ...schedule,
           priority: schedules.length - index,
@@ -225,6 +239,7 @@ export default function UsageSettingsClient() {
 
       setTimezone(saved.timezone);
       setDailyLimitMinutes(toMinutes(saved.dailyLimitSeconds) || "60");
+      setDailyOpenLimit(toCountLimit(saved.dailyOpenLimit));
       setSchedules(saved.schedules);
       setSubredditRules(
         Object.fromEntries(
@@ -296,7 +311,7 @@ export default function UsageSettingsClient() {
           <>
             <section className="mt-8 rounded-3xl border border-gray-800 bg-gray-900/70 p-6">
               <h2 className="text-xl font-semibold text-white">Daily limit</h2>
-              <div className="mt-5 grid gap-5 md:grid-cols-2">
+              <div className="mt-5 grid gap-5 md:grid-cols-3">
                 <label className="block">
                   <span className="text-sm text-gray-400">Timezone</span>
                   <input
@@ -320,6 +335,22 @@ export default function UsageSettingsClient() {
                     />
                     <span className="text-sm text-gray-500">minutes</span>
                   </div>
+                </div>
+
+                <div>
+                  <span className="text-sm text-gray-400">Daily open limit</span>
+                  <div className="mt-2 flex items-center gap-3">
+                    <input
+                      type="number"
+                      min="1"
+                      value={dailyOpenLimit}
+                      onChange={(event) => setDailyOpenLimit(event.target.value)}
+                      className="w-40 rounded-2xl border border-gray-700 bg-gray-950 px-4 py-3 text-sm text-white disabled:opacity-50"
+                      placeholder="Unlimited"
+                    />
+                    <span className="text-sm text-gray-500">opens</span>
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">Leave blank to avoid blocking new opens.</p>
                 </div>
               </div>
             </section>

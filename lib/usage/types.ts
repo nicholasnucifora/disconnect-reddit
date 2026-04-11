@@ -8,6 +8,8 @@ export interface UsageSettingsRow {
   timezone: string;
   daily_limit_seconds: number | null;
   daily_usage_seconds: number;
+  daily_open_limit: number | null;
+  daily_open_count: number;
   daily_reset_at: string;
 }
 
@@ -40,6 +42,13 @@ export interface UsageEventRow {
   subreddit: string | null;
 }
 
+export interface UsageOpenEventRow {
+  username: string;
+  occurred_at: string;
+  usage_date: string;
+  session_id: string;
+}
+
 export interface UsageFeedBreakdownSegment {
   feedId: string;
   feedName: string;
@@ -69,13 +78,17 @@ export interface UsageStatusPayload {
   todayKey: string;
   timezone: string;
   dailyUsageSeconds: number;
+  dailyOpenCount: number;
   globalDailyLimitSeconds: number | null;
   effectiveDailyLimitSeconds: number | null;
   remainingSeconds: number | null;
+  dailyOpenLimit: number | null;
+  remainingOpens: number | null;
   dailyResetAt: string;
   isBlockedBySchedule: boolean;
   isLimitReached: boolean;
-  restrictionReason: "schedule_blocked" | "limit_reached" | null;
+  isOpenLimitReached: boolean;
+  restrictionReason: "schedule_blocked" | "limit_reached" | "open_limit_reached" | null;
   currentSchedule: UsageScheduleWithWindows | null;
   todayWindows: UsageWindowStatus[];
   hasScheduleToday: boolean;
@@ -93,7 +106,9 @@ export interface UsageTrackEntryInput {
 export interface UsageChartDay {
   date: string;
   usageSeconds: number;
+  openCount: number;
   limitSeconds: number | null;
+  openLimit: number | null;
   feedSegments: UsageFeedBreakdownSegment[];
   subredditSegments: UsageSubredditBreakdownSegment[];
 }
@@ -106,13 +121,16 @@ export interface UsageHistoryPayload {
   resetAt: string;
   stats: {
     totalSeconds: number;
+    totalOpens: number;
     activeDays: number;
     averageDayCount: number;
     averageSeconds: number;
+    averageOpens: number;
   };
   rangeAverage: {
     dayCount: number;
     averageSeconds: number;
+    averageOpens: number;
     feedSegments: UsageFeedBreakdownSegment[];
     subredditSegments: UsageSubredditBreakdownSegment[];
   };
@@ -123,5 +141,6 @@ export interface UsageHistoryPayload {
 export interface UsageSettingsPayload {
   timezone: string;
   dailyLimitSeconds: number | null;
+  dailyOpenLimit: number | null;
   schedules: UsageScheduleWithWindows[];
 }

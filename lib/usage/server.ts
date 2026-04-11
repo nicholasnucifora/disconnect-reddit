@@ -8,6 +8,7 @@ import {
   type UsageFeedBreakdownSegment,
   type UsageHistoryPayload,
   type UsageHistoryRangeMode,
+  type UsageOpenEventRow,
   type UsageScheduleRow,
   type UsageScheduleWindowRow,
   type UsageScheduleWithWindows,
@@ -47,11 +48,17 @@ function ensureDailyLimit(value: number | null | undefined): number {
   return value == null || value <= 0 ? DEFAULT_DAILY_LIMIT_SECONDS : value;
 }
 
+function ensureDailyOpenLimit(value: number | null | undefined): number | null {
+  return value == null || value <= 0 ? null : Math.floor(value);
+}
+
 async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
   const supabase = createClient();
   const result = await supabase
     .from("user_usage_settings")
-    .select("username, timezone, daily_limit_seconds, daily_usage_seconds, daily_reset_at")
+    .select(
+      "username, timezone, daily_limit_seconds, daily_usage_seconds, daily_open_limit, daily_open_count, daily_reset_at",
+    )
     .eq("username", USERNAME)
     .maybeSingle();
   if (result.error) {
@@ -68,6 +75,8 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
       timezone,
       daily_limit_seconds: DEFAULT_DAILY_LIMIT_SECONDS,
       daily_usage_seconds: 0,
+      daily_open_limit: null,
+      daily_open_count: 0,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
     };
     const upsertResult = await supabase.from("user_usage_settings").upsert(initial, { onConflict: "username" });
@@ -83,6 +92,8 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
       timezone,
       daily_limit_seconds: ensureDailyLimit(data.daily_limit_seconds),
       daily_usage_seconds: 0,
+      daily_open_limit: ensureDailyOpenLimit(data.daily_open_limit),
+      daily_open_count: 0,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
     };
     const updateResult = await supabase
@@ -91,6 +102,8 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
         timezone,
         daily_limit_seconds: reset.daily_limit_seconds,
         daily_usage_seconds: 0,
+        daily_open_limit: reset.daily_open_limit,
+        daily_open_count: 0,
         daily_reset_at: reset.daily_reset_at,
       })
       .eq("username", USERNAME);
@@ -105,6 +118,8 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
     timezone,
     daily_limit_seconds: ensureDailyLimit(data.daily_limit_seconds),
     daily_usage_seconds: data.daily_usage_seconds ?? 0,
+    daily_open_limit: ensureDailyOpenLimit(data.daily_open_limit),
+    daily_open_count: data.daily_open_count ?? 0,
     daily_reset_at: currentResetAt.toISOString(),
   };
 }
@@ -150,6 +165,7 @@ export async function getUsageSettingsPayload(now = new Date()): Promise<UsageSe
   return {
     timezone: normalizeTimeZone(settings.timezone),
     dailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
+    dailyOpenLimit: ensureDailyOpenLimit(settings.daily_open_limit),
     schedules,
   };
 }
@@ -169,6 +185,8 @@ export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, no
         timezone,
         daily_limit_seconds: ensureDailyLimit(payload.dailyLimitSeconds),
         daily_usage_seconds: currentSettings.daily_usage_seconds,
+        daily_open_limit: ensureDailyOpenLimit(payload.dailyOpenLimit),
+        daily_open_count: currentSettings.daily_open_count,
         daily_reset_at: nextResetAt,
       },
       { onConflict: "username" },
@@ -298,6 +316,7 @@ function buildStatusPayload(
   settings: UsageSettingsRow,
   schedules: UsageScheduleWithWindows[],
   now = new Date(),
+  options?: { openLimitBlocked?: boolean },
 ): UsageStatusPayload {
   const timezone = normalizeTimeZone(settings.timezone);
   const parts = getZonedParts(now, timezone);
@@ -316,24 +335,34 @@ function buildStatusPayload(
     effectiveDailyLimitSeconds == null
       ? null
       : Math.max(0, effectiveDailyLimitSeconds - settings.daily_usage_seconds);
+  const dailyOpenLimit = ensureDailyOpenLimit(settings.daily_open_limit);
+  const remainingOpens =
+    dailyOpenLimit == null ? null : Math.max(0, dailyOpenLimit - settings.daily_open_count);
   const isLimitReached =
     effectiveDailyLimitSeconds != null &&
     remainingSeconds != null &&
     remainingSeconds <= USAGE_UI_BUFFER_SECONDS;
+  const isOpenLimitReached = options?.openLimitBlocked ?? false;
 
   return {
     now: now.toISOString(),
     todayKey: getLocalDateKey(now, timezone),
     timezone,
     dailyUsageSeconds: settings.daily_usage_seconds,
+    dailyOpenCount: settings.daily_open_count,
     globalDailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
     effectiveDailyLimitSeconds,
     remainingSeconds,
+    dailyOpenLimit,
+    remainingOpens,
     dailyResetAt: settings.daily_reset_at,
     isBlockedBySchedule,
     isLimitReached,
+    isOpenLimitReached,
     restrictionReason: isBlockedBySchedule
       ? "schedule_blocked"
+      : isOpenLimitReached
+      ? "open_limit_reached"
       : isLimitReached
       ? "limit_reached"
       : null,
@@ -348,6 +377,97 @@ function buildStatusPayload(
 export async function getUsageStatus(now = new Date()): Promise<UsageStatusPayload> {
   const [settings, schedules] = await Promise.all([ensureSettings(now), getSchedules()]);
   return buildStatusPayload(settings, schedules, now);
+}
+
+export async function registerDailyOpen(
+  sessionId: string,
+  now = new Date(),
+): Promise<UsageStatusPayload> {
+  const normalizedSessionId = sessionId.trim().slice(0, 128);
+  if (!normalizedSessionId) {
+    throw new Error("Missing session id");
+  }
+
+  const [settingsBefore, schedules] = await Promise.all([ensureSettings(now), getSchedules()]);
+  const timeZone = normalizeTimeZone(settingsBefore.timezone);
+  const usageDate = getLocalDateKey(now, timeZone);
+  const supabase = createClient();
+
+  const existingOpen = await supabase
+    .from("reddit_open_events")
+    .select("session_id")
+    .eq("username", USERNAME)
+    .eq("usage_date", usageDate)
+    .eq("session_id", normalizedSessionId)
+    .maybeSingle();
+
+  if (existingOpen.error) {
+    throw new Error(`load reddit_open_events session: ${existingOpen.error.message}`);
+  }
+
+  if (existingOpen.data) {
+    return buildStatusPayload(settingsBefore, schedules, now);
+  }
+
+  const dailyOpenLimit = ensureDailyOpenLimit(settingsBefore.daily_open_limit);
+  if (dailyOpenLimit != null && settingsBefore.daily_open_count >= dailyOpenLimit) {
+    return buildStatusPayload(settingsBefore, schedules, now, { openLimitBlocked: true });
+  }
+
+  const insertOpen = await supabase.from("reddit_open_events").upsert(
+    {
+      username: USERNAME,
+      occurred_at: now.toISOString(),
+      usage_date: usageDate,
+      session_id: normalizedSessionId,
+    },
+    {
+      onConflict: "username,usage_date,session_id",
+      ignoreDuplicates: true,
+    },
+  );
+
+  if (insertOpen.error) {
+    throw new Error(`insert reddit_open_events: ${insertOpen.error.message}`);
+  }
+
+  const countResult = await supabase
+    .from("reddit_open_events")
+    .select("*", { count: "exact", head: true })
+    .eq("username", USERNAME)
+    .eq("usage_date", usageDate);
+
+  if (countResult.error) {
+    throw new Error(`count reddit_open_events: ${countResult.error.message}`);
+  }
+
+  const nextDailyOpenCount = countResult.count ?? settingsBefore.daily_open_count + 1;
+  const nextResetAt =
+    settingsBefore.daily_reset_at || getNextLocalMidnight(now, timeZone).toISOString();
+
+  const updateSettings = await supabase
+    .from("user_usage_settings")
+    .update({
+      daily_open_count: nextDailyOpenCount,
+      daily_reset_at: nextResetAt,
+      timezone: timeZone,
+    })
+    .eq("username", USERNAME);
+
+  if (updateSettings.error) {
+    throw new Error(`update user_usage_settings opens: ${updateSettings.error.message}`);
+  }
+
+  return buildStatusPayload(
+    {
+      ...settingsBefore,
+      daily_open_count: nextDailyOpenCount,
+      daily_reset_at: nextResetAt,
+      timezone: timeZone,
+    },
+    schedules,
+    now,
+  );
 }
 
 export async function trackUsageEntries(
@@ -514,19 +634,24 @@ function buildRangeAverage(
   chart: UsageChartDay[],
   todayKey: string,
 ): UsageHistoryPayload["rangeAverage"] {
-  const averageDays = chart.filter((day) => day.date !== todayKey && day.usageSeconds > 0);
+  const averageDays = chart.filter(
+    (day) => day.date !== todayKey && (day.usageSeconds > 0 || day.openCount > 0),
+  );
 
   if (averageDays.length === 0) {
     return {
       dayCount: 0,
       averageSeconds: 0,
+      averageOpens: 0,
       feedSegments: [],
       subredditSegments: [],
     };
   }
 
   const totalSeconds = averageDays.reduce((sum, day) => sum + day.usageSeconds, 0);
+  const totalOpens = averageDays.reduce((sum, day) => sum + day.openCount, 0);
   const averageSeconds = Math.round(totalSeconds / averageDays.length);
+  const averageOpens = Math.round(totalOpens / averageDays.length);
   const feedTotals = new Map<string, UsageFeedBreakdownSegment>();
   const subredditTotals = new Map<string, UsageSubredditBreakdownSegment>();
 
@@ -554,6 +679,7 @@ function buildRangeAverage(
   return {
     dayCount: averageDays.length,
     averageSeconds,
+    averageOpens,
     feedSegments: allocateAverageSeconds(
       Array.from(feedTotals.values()),
       averageDays.length,
@@ -579,19 +705,35 @@ export async function getUsageHistory(
   const todayKey = getLocalDateKey(now, timeZone);
 
   const supabase = createClient();
-  const firstTrackedResult = await supabase
-    .from("reddit_usage_events")
-    .select("usage_date")
-    .eq("username", USERNAME)
-    .order("usage_date", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  const [firstUsageResult, firstOpenResult] = await Promise.all([
+    supabase
+      .from("reddit_usage_events")
+      .select("usage_date")
+      .eq("username", USERNAME)
+      .order("usage_date", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from("reddit_open_events")
+      .select("usage_date")
+      .eq("username", USERNAME)
+      .order("usage_date", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
+  ]);
 
-  if (firstTrackedResult.error) {
-    throw new Error(`load first tracked usage date: ${firstTrackedResult.error.message}`);
+  if (firstUsageResult.error) {
+    throw new Error(`load first tracked usage date: ${firstUsageResult.error.message}`);
   }
 
-  const firstTrackedDate = firstTrackedResult.data?.usage_date ?? null;
+  if (firstOpenResult.error) {
+    throw new Error(`load first tracked open date: ${firstOpenResult.error.message}`);
+  }
+
+  const firstTrackedDate =
+    [firstUsageResult.data?.usage_date ?? null, firstOpenResult.data?.usage_date ?? null]
+      .filter((value): value is string => value != null)
+      .sort()[0] ?? null;
   const recentStartDate = new Date(now.getTime() - (RECENT_HISTORY_DAYS - 1) * 24 * 60 * 60 * 1000);
   const recentStartKey = getLocalDateKey(recentStartDate, timeZone);
   const startKey =
@@ -602,28 +744,46 @@ export async function getUsageHistory(
       : firstTrackedDate > recentStartKey
       ? firstTrackedDate
       : recentStartKey;
-  const eventsResult =
+  const [eventsResult, openEventsResult] =
     startKey == null
-      ? { data: [] as UsageEventRow[] | null, error: null }
-      : await supabase
-          .from("reddit_usage_events")
-          .select("username, occurred_at, usage_date, seconds, feed_id, feed_name, subreddit")
-          .eq("username", USERNAME)
-          .gte("usage_date", startKey)
-          .order("usage_date", { ascending: true });
+      ? [
+          { data: [] as UsageEventRow[] | null, error: null },
+          { data: [] as UsageOpenEventRow[] | null, error: null },
+        ]
+      : await Promise.all([
+          supabase
+            .from("reddit_usage_events")
+            .select("username, occurred_at, usage_date, seconds, feed_id, feed_name, subreddit")
+            .eq("username", USERNAME)
+            .gte("usage_date", startKey)
+            .order("usage_date", { ascending: true }),
+          supabase
+            .from("reddit_open_events")
+            .select("username, occurred_at, usage_date, session_id")
+            .eq("username", USERNAME)
+            .gte("usage_date", startKey)
+            .order("usage_date", { ascending: true }),
+        ]);
 
   if (eventsResult.error) {
     throw new Error(`load reddit_usage_events: ${eventsResult.error.message}`);
   }
 
+  if (openEventsResult.error) {
+    throw new Error(`load reddit_open_events: ${openEventsResult.error.message}`);
+  }
+
   const events = (eventsResult.data as UsageEventRow[] | null) ?? [];
+  const openEvents = (openEventsResult.data as UsageOpenEventRow[] | null) ?? [];
   const chartMap = new Map<string, UsageChartDay>();
 
   for (const event of events) {
     const day = chartMap.get(event.usage_date) ?? {
       date: event.usage_date,
       usageSeconds: 0,
+      openCount: 0,
       limitSeconds: getLimitForDate(event.usage_date, schedules, ensureDailyLimit(settings.daily_limit_seconds), timeZone),
+      openLimit: ensureDailyOpenLimit(settings.daily_open_limit),
       feedSegments: [],
       subredditSegments: [],
     };
@@ -660,6 +820,26 @@ export async function getUsageHistory(
     chartMap.set(event.usage_date, day);
   }
 
+  for (const event of openEvents) {
+    const day = chartMap.get(event.usage_date) ?? {
+      date: event.usage_date,
+      usageSeconds: 0,
+      openCount: 0,
+      limitSeconds: getLimitForDate(
+        event.usage_date,
+        schedules,
+        ensureDailyLimit(settings.daily_limit_seconds),
+        timeZone,
+      ),
+      openLimit: ensureDailyOpenLimit(settings.daily_open_limit),
+      feedSegments: [],
+      subredditSegments: [],
+    };
+
+    day.openCount += 1;
+    chartMap.set(event.usage_date, day);
+  }
+
   const chart =
     startKey == null
       ? []
@@ -674,12 +854,14 @@ export async function getUsageHistory(
       return {
         date: dateKey,
         usageSeconds: 0,
+        openCount: 0,
         limitSeconds: getLimitForDate(
           dateKey,
           schedules,
           ensureDailyLimit(settings.daily_limit_seconds),
           timeZone,
         ),
+        openLimit: ensureDailyOpenLimit(settings.daily_open_limit),
         feedSegments: [],
         subredditSegments: [],
       } satisfies UsageChartDay;
@@ -693,7 +875,8 @@ export async function getUsageHistory(
   });
 
   const totalSeconds = chart.reduce((sum, day) => sum + day.usageSeconds, 0);
-  const activeDays = chart.filter((day) => day.usageSeconds > 0).length;
+  const totalOpens = chart.reduce((sum, day) => sum + day.openCount, 0);
+  const activeDays = chart.filter((day) => day.usageSeconds > 0 || day.openCount > 0).length;
   const rangeAverage = buildRangeAverage(chart, todayKey);
 
   return {
@@ -702,9 +885,11 @@ export async function getUsageHistory(
     resetAt: settings.daily_reset_at,
     stats: {
       totalSeconds,
+      totalOpens,
       activeDays,
       averageDayCount: rangeAverage.dayCount,
       averageSeconds: rangeAverage.averageSeconds,
+      averageOpens: rangeAverage.averageOpens,
     },
     rangeAverage,
     today: buildStatusPayload(settings, schedules, now),

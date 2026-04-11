@@ -17,6 +17,10 @@ export default function TodayUsageSection({ status }: { status: UsageStatusPaylo
     allowance && allowance > 0
       ? Math.min(100, (status.dailyUsageSeconds / allowance) * 100)
       : 0;
+  const openSummary =
+    status.dailyOpenLimit == null
+      ? `${status.dailyOpenCount} opens today`
+      : `${status.dailyOpenCount} / ${status.dailyOpenLimit} opens`;
 
   return (
     <section className="rounded-3xl border border-gray-800 bg-gray-900/70 p-6">
@@ -52,6 +56,11 @@ export default function TodayUsageSection({ status }: { status: UsageStatusPaylo
             {allowance == null
               ? "Unlimited"
               : `${formatDurationCompact(status.dailyUsageSeconds)} / ${formatDurationCompact(allowance)}`}
+          </div>
+          <div className="mt-3 text-gray-500">Opens</div>
+          <div className="mt-1 font-medium text-white">{openSummary}</div>
+          <div className="mt-1 text-xs text-gray-500">
+            {status.remainingOpens == null ? "No open cap" : `${status.remainingOpens} opens left today`}
           </div>
         </div>
       </div>
@@ -102,6 +111,14 @@ export default function TodayUsageSection({ status }: { status: UsageStatusPaylo
             }`}
             style={{ width: `${progress}%` }}
           />
+        </div>
+        <div className="mt-4 flex items-center justify-between text-sm text-gray-400">
+          <span>Today&apos;s opens</span>
+          <span>
+            {status.remainingOpens == null
+              ? `${status.dailyOpenCount} logged`
+              : `${Math.max(status.remainingOpens, 0)} remaining`}
+          </span>
         </div>
       </div>
     </section>

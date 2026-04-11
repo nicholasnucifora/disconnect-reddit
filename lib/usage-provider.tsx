@@ -24,12 +24,15 @@ import {
   type UsageStatusPayload,
 } from "./usage/types";
 
+const USAGE_SESSION_KEY = "disconnect_reddit_usage_session_id_v1";
+
 interface UsageContextValue {
   status: UsageStatusPayload | null;
   ready: boolean;
   isRefreshing: boolean;
   isBlocked: boolean;
   isLimitReached: boolean;
+  isOpenLimitReached: boolean;
   canBrowse: boolean;
   headerLabel: string | null;
   headerTone: "neutral" | "warning" | "danger";
@@ -60,6 +63,25 @@ function withLocalUsageFloor(nextStatus: UsageStatusPayload, localStatus: UsageS
       ? ("limit_reached" as const)
       : null,
   };
+}
+
+function getUsageSessionId() {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const existing = window.sessionStorage.getItem(USAGE_SESSION_KEY);
+    if (existing) return existing;
+
+    const nextId =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
+    window.sessionStorage.setItem(USAGE_SESSION_KEY, nextId);
+    return nextId;
+  } catch {
+    return null;
+  }
 }
 
 export function UsageProvider({ children }: { children: ReactNode }) {
@@ -118,6 +140,32 @@ export function UsageProvider({ children }: { children: ReactNode }) {
     }
   }, [mergeStatus]);
 
+  const registerOpen = useCallback(async () => {
+    const sessionId = getUsageSessionId();
+    if (!sessionId) {
+      await refreshStatus();
+      return;
+    }
+
+    setIsRefreshing(true);
+    try {
+      const response = await fetch("/api/usage/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId }),
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Failed to register app open");
+      const nextStatus = (await response.json()) as UsageStatusPayload;
+      mergeStatus(withLocalUsageFloor(nextStatus, statusRef.current));
+    } catch {
+      setReady((prev) => prev || !!statusRef.current);
+      await refreshStatus();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [mergeStatus, refreshStatus]);
+
   const flushPending = useCallback(async (useBeacon = false) => {
     if (inflightFlushRef.current) return inflightFlushRef.current;
 
@@ -161,10 +209,10 @@ export function UsageProvider({ children }: { children: ReactNode }) {
   }, [mergeStatus]);
 
   useEffect(() => {
-    void refreshStatus();
+    void registerOpen();
     const interval = window.setInterval(() => void refreshStatus(), USAGE_STATUS_REFRESH_MS);
     return () => clearInterval(interval);
-  }, [refreshStatus]);
+  }, [refreshStatus, registerOpen]);
 
   useEffect(() => {
     currentContextRef.current = currentContext;
@@ -203,6 +251,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       document.visibilityState === "visible" &&
       focusedRef.current &&
       !status.isBlockedBySchedule &&
+      !status.isOpenLimitReached &&
       !status.isLimitReached;
   }, [status, currentContext]);
 
@@ -252,8 +301,9 @@ export function UsageProvider({ children }: { children: ReactNode }) {
   }, [flushPending]);
 
   const value = useMemo<UsageContextValue>(() => {
-    const isBlocked = !!status?.isBlockedBySchedule;
+    const isBlocked = !!status?.isBlockedBySchedule || !!status?.isOpenLimitReached;
     const isLimitReached = !!status?.isLimitReached;
+    const isOpenLimitReached = !!status?.isOpenLimitReached;
     const canBrowse = !!status && !isBlocked && !isLimitReached;
     const progressPercent =
       status?.effectiveDailyLimitSeconds && status.effectiveDailyLimitSeconds > 0
@@ -264,8 +314,11 @@ export function UsageProvider({ children }: { children: ReactNode }) {
     let headerTone: "neutral" | "warning" | "danger" = "neutral";
 
     if (status) {
-      if (isBlocked) {
+      if (status.isBlockedBySchedule) {
         headerLabel = "Blocked";
+        headerTone = "danger";
+      } else if (status.isOpenLimitReached) {
+        headerLabel = "Open limit reached";
         headerTone = "danger";
       } else if (isLimitReached) {
         headerLabel = "Limit reached";
@@ -282,6 +335,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       isRefreshing,
       isBlocked,
       isLimitReached,
+      isOpenLimitReached,
       canBrowse,
       headerLabel,
       headerTone,

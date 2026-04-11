@@ -14,13 +14,20 @@ const RANGE_OPTIONS: Array<{ mode: UsageHistoryRangeMode; label: string }> = [
   { mode: "recent", label: "Recent" },
   { mode: "overall", label: "Overall" },
 ];
+const CHART_MODE_OPTIONS = [
+  { mode: "time", label: "Time" },
+  { mode: "opens", label: "Opens" },
+] as const;
 const RECENT_WINDOW_DAYS = 30;
 const FEED_COLORS = ["#60a5fa", "#fb7185", "#4ade80", "#a78bfa", "#f472b6", "#38bdf8"];
 const OTHER_SEGMENT_COLOR = "#64748b";
 const LIMIT_LINE_COLOR = "#f59e0b";
+const OPEN_BAR_COLOR = "#2dd4bf";
 const CHART_OTHER_THRESHOLD = 0.15;
 const CHART_HEIGHT = 320;
 const LABEL_HEIGHT = 40;
+
+type ChartMode = (typeof CHART_MODE_OPTIONS)[number]["mode"];
 
 type ChartSegment = {
   key: string;
@@ -31,9 +38,8 @@ type ChartSegment = {
 
 type HoveredSegment = {
   key: string;
-  dayDate: string;
   label: string;
-  seconds: number;
+  value: number;
   x: number;
   top: number;
 };
@@ -78,6 +84,18 @@ function getChartSegments(day: UsageChartDay): ChartSegment[] {
   return prominentSegments.sort((a, b) => b.seconds - a.seconds);
 }
 
+function getChartValue(day: UsageChartDay, mode: ChartMode) {
+  return mode === "time" ? day.usageSeconds : day.openCount;
+}
+
+function getChartLimit(day: UsageChartDay, mode: ChartMode) {
+  return mode === "time" ? day.limitSeconds : day.openLimit;
+}
+
+function formatMetricValue(value: number, mode: ChartMode) {
+  return mode === "time" ? formatDurationCompact(value) : formatOpenCount(value);
+}
+
 function formatResetDistance(resetAt: string) {
   const seconds = Math.max(0, Math.floor((new Date(resetAt).getTime() - Date.now()) / 1000));
   return formatDurationCompact(seconds);
@@ -111,8 +129,17 @@ function formatDeltaCompact(seconds: number) {
   return `${sign}${formatDurationCompact(Math.abs(seconds))}`;
 }
 
-function getNiceStep(roughStep: number) {
-  const safe = Math.max(roughStep, 60);
+function formatOpenCount(count: number) {
+  return count === 1 ? "1 open" : `${count} opens`;
+}
+
+function formatOpenDelta(value: number) {
+  const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+  return `${sign}${formatOpenCount(Math.abs(value))}`;
+}
+
+function getNiceStep(roughStep: number, minimum: number) {
+  const safe = Math.max(roughStep, minimum);
   const magnitude = 10 ** Math.floor(Math.log10(safe));
   const normalized = safe / magnitude;
 
@@ -123,16 +150,20 @@ function getNiceStep(roughStep: number) {
   return 10 * magnitude;
 }
 
-function getAxisConfig(data: UsageChartDay[]) {
+function getAxisConfig(data: UsageChartDay[], mode: ChartMode) {
   const rawMax = data.reduce(
-    (max, day) => Math.max(max, day.usageSeconds, day.limitSeconds ?? 0),
-    15 * 60,
+    (max, day) => Math.max(max, getChartValue(day, mode), getChartLimit(day, mode) ?? 0),
+    mode === "time" ? 15 * 60 : 4,
   );
-  const step = getNiceStep(rawMax / 4);
+  const step = getNiceStep(rawMax / 4, mode === "time" ? 60 : 1);
   const max = Math.max(step * 4, rawMax);
   const marks = [0, step, step * 2, step * 3, step * 4];
 
   return { max, marks };
+}
+
+function formatAxisMark(value: number, mode: ChartMode) {
+  return mode === "time" ? formatDurationCompact(value) : String(value);
 }
 
 function getBarMetrics(dayCount: number) {
@@ -153,6 +184,7 @@ function getXAxisLabelStep(dayCount: number) {
 
 function buildLimitPath(
   data: UsageChartDay[],
+  mode: ChartMode,
   axisMax: number,
   barWidth: number,
   gap: number,
@@ -162,10 +194,11 @@ function buildLimitPath(
   const points: Array<{ x: number; y: number }> = [];
 
   data.forEach((day, index) => {
-    if (day.limitSeconds == null) return;
+    const limit = getChartLimit(day, mode);
+    if (limit == null) return;
 
     const x = index * (barWidth + gap) + barWidth / 2;
-    const y = chartHeight - (Math.min(day.limitSeconds, axisMax) / axisMax) * chartHeight;
+    const y = chartHeight - (Math.min(limit, axisMax) / axisMax) * chartHeight;
     points.push({ x, y });
   });
 
@@ -184,8 +217,31 @@ function buildLimitPath(
   return commands.join(" ");
 }
 
+function getChartDescription(mode: ChartMode) {
+  return mode === "time"
+    ? "Hover a color band to identify the feed. Small slices still collapse into Other on the chart, and clicking the same day again clears the selection back to the range average below."
+    : "Flip to opens to see how many separate app launches were registered each day. Clicking the same day again clears the selection back to the range average below.";
+}
+
+function getLimitLegendLabel(mode: ChartMode) {
+  return mode === "time" ? "Daily limit" : "Open limit";
+}
+
+function getDeltaArrow(delta: number) {
+  if (delta < 0) return "v";
+  if (delta > 0) return "^";
+  return "=";
+}
+
+function getDeltaTone(delta: number) {
+  if (delta < 0) return "text-emerald-300";
+  if (delta > 0) return "text-red-300";
+  return "text-gray-400";
+}
+
 export default function UsageHistoryClient() {
   const [rangeMode, setRangeMode] = useState<UsageHistoryRangeMode>("recent");
+  const [chartMode, setChartMode] = useState<ChartMode>("time");
   const [data, setData] = useState<UsageHistoryPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState<string | null | undefined>(undefined);
@@ -220,7 +276,7 @@ export default function UsageHistoryClient() {
     };
   }, [rangeMode]);
 
-  const axis = useMemo(() => getAxisConfig(data?.chart ?? []), [data]);
+  const axis = useMemo(() => getAxisConfig(data?.chart ?? [], chartMode), [data, chartMode]);
 
   const selectedDay = useMemo(() => {
     if (!data || selectedDate == null) return null;
@@ -231,15 +287,15 @@ export default function UsageHistoryClient() {
     if (!data) return null;
 
     const yesterdayKey = getPreviousDateKey(data.today.todayKey);
-    const yesterdayUsage = data.chart.find((day) => day.date === yesterdayKey)?.usageSeconds ?? 0;
-    const delta = yesterdayUsage - data.stats.averageSeconds;
+    const yesterdayDay = data.chart.find((day) => day.date === yesterdayKey);
+    const yesterdayUsage = yesterdayDay?.usageSeconds ?? 0;
+    const yesterdayOpens = yesterdayDay?.openCount ?? 0;
 
     return {
       usageSeconds: yesterdayUsage,
-      delta,
-      tone:
-        delta < 0 ? "text-emerald-300" : delta > 0 ? "text-red-300" : "text-gray-400",
-      arrow: delta < 0 ? "↓" : delta > 0 ? "↑" : "→",
+      openCount: yesterdayOpens,
+      usageDelta: yesterdayUsage - data.stats.averageSeconds,
+      openDelta: yesterdayOpens - data.stats.averageOpens,
     };
   }, [data]);
 
@@ -263,7 +319,7 @@ export default function UsageHistoryClient() {
               Watch Time
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-gray-400">
-              Track total Reddit time, today&apos;s schedule state, and which feeds or subreddits took the day.
+              Track total Reddit time, app opens, today&apos;s schedule state, and which feeds or subreddits took the day.
             </p>
           </div>
 
@@ -288,11 +344,18 @@ export default function UsageHistoryClient() {
 
         {data && (
           <section className="mt-8 grid gap-4 md:grid-cols-4">
-            <StatCard label="Total usage" value={formatDurationCompact(data.stats.totalSeconds)} />
             <StatCard
+              label="Total usage"
+              value={formatDurationCompact(data.stats.totalSeconds)}
+              detail={`${formatOpenCount(data.stats.totalOpens)} total`}
+            />
+            <DualMetricCard
               label="Daily average"
-              value={formatDurationCompact(data.stats.averageSeconds)}
-              detail={
+              metrics={[
+                { label: "Time spent", value: formatDurationCompact(data.stats.averageSeconds) },
+                { label: "Times opened", value: formatOpenCount(data.stats.averageOpens) },
+              ]}
+              footer={
                 data.stats.averageDayCount > 0
                   ? `Across ${data.stats.averageDayCount} completed tracked day${
                       data.stats.averageDayCount === 1 ? "" : "s"
@@ -300,38 +363,66 @@ export default function UsageHistoryClient() {
                   : "Waiting for a completed tracked day"
               }
             />
-            <StatCard
+            <DualMetricCard
               label="Yesterday's Usage"
-              value={formatDurationCompact(yesterdayStats?.usageSeconds ?? 0)}
-              detail={
-                yesterdayStats
-                  ? `${yesterdayStats.arrow} ${formatDeltaCompact(yesterdayStats.delta)} vs average`
-                  : null
-              }
-              detailClassName={yesterdayStats?.tone}
+              metrics={[
+                {
+                  label: "Time spent",
+                  value: formatDurationCompact(yesterdayStats?.usageSeconds ?? 0),
+                  detail: yesterdayStats
+                    ? `${getDeltaArrow(yesterdayStats.usageDelta)} ${formatDeltaCompact(yesterdayStats.usageDelta)} vs average`
+                    : null,
+                  detailClassName: getDeltaTone(yesterdayStats?.usageDelta ?? 0),
+                },
+                {
+                  label: "Times opened",
+                  value: formatOpenCount(yesterdayStats?.openCount ?? 0),
+                  detail: yesterdayStats
+                    ? `${getDeltaArrow(yesterdayStats.openDelta)} ${formatOpenDelta(yesterdayStats.openDelta)} vs average`
+                    : null,
+                  detailClassName: getDeltaTone(yesterdayStats?.openDelta ?? 0),
+                },
+              ]}
             />
             <StatCard label="Resets in" value={formatResetDistance(data.resetAt)} />
           </section>
         )}
 
         <section className="mt-8 rounded-3xl border border-gray-800 bg-gray-900/70 p-6">
-          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-white">Daily usage chart</h2>
               <p className="mt-1 max-w-2xl text-sm text-gray-400">
-                Hover a color band to identify the feed. Small slices still collapse into Other on the chart, and clicking the same day again clears the selection back to the range average below.
+                {getChartDescription(chartMode)}
               </p>
               {data && <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-gray-500">{rangeSummary}</p>}
             </div>
-            <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
-              <span className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-teal-400" />
-                Current day
-              </span>
-              <span className="flex items-center gap-2">
-                <span className="h-0.5 w-4" style={{ backgroundColor: LIMIT_LINE_COLOR }} />
-                Daily limit
-              </span>
+            <div className="flex flex-col items-start gap-3 md:items-end">
+              <div className="inline-flex rounded-full border border-gray-800 bg-gray-950/80 p-1">
+                {CHART_MODE_OPTIONS.map((option) => (
+                  <button
+                    key={option.mode}
+                    onClick={() => setChartMode(option.mode)}
+                    className={`rounded-full px-4 py-2 text-sm transition-colors ${
+                      chartMode === option.mode
+                        ? "bg-teal-400 text-gray-950"
+                        : "text-gray-300 hover:bg-gray-900"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-3 text-xs text-gray-400">
+                <span className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-teal-400" />
+                  Current day
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="h-0.5 w-4" style={{ backgroundColor: LIMIT_LINE_COLOR }} />
+                  {getLimitLegendLabel(chartMode)}
+                </span>
+              </div>
             </div>
           </div>
 
@@ -349,6 +440,7 @@ export default function UsageHistoryClient() {
           ) : (
             <UsageChart
               data={data.chart}
+              mode={chartMode}
               axisMax={axis.max}
               axisMarks={axis.marks}
               selectedDate={selectedDate ?? null}
@@ -369,7 +461,7 @@ export default function UsageHistoryClient() {
             <div className="rounded-3xl border border-gray-800 bg-gray-900/70 p-6">
               <h3 className="text-lg font-semibold text-white">Manage daily usage</h3>
               <p className="mt-2 text-sm leading-6 text-gray-400">
-                Daily limits and schedules update the chart automatically, including the limit line for each tracked day.
+                Daily time limits, open caps, and schedules update the chart automatically, including the limit line for each tracked day.
               </p>
               <Link
                 href="/settings"
@@ -407,8 +499,46 @@ function StatCard({
   );
 }
 
+function DualMetricCard({
+  label,
+  metrics,
+  footer,
+}: {
+  label: string;
+  metrics: Array<{
+    label: string;
+    value: string;
+    detail?: string | null;
+    detailClassName?: string;
+  }>;
+  footer?: string | null;
+}) {
+  return (
+    <div className="rounded-3xl border border-gray-800 bg-gray-900/70 p-5">
+      <p className="text-sm text-gray-500">{label}</p>
+      <div className="mt-4 space-y-4">
+        {metrics.map((metric) => (
+          <div key={metric.label}>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
+              {metric.label}
+            </div>
+            <div className="mt-1 text-2xl font-semibold text-white">{metric.value}</div>
+            {metric.detail ? (
+              <div className={`mt-1 text-sm font-medium ${metric.detailClassName ?? "text-gray-400"}`}>
+                {metric.detail}
+              </div>
+            ) : null}
+          </div>
+        ))}
+      </div>
+      {footer ? <p className="mt-4 text-sm text-gray-400">{footer}</p> : null}
+    </div>
+  );
+}
+
 function UsageChart({
   data,
+  mode,
   axisMax,
   axisMarks,
   selectedDate,
@@ -416,6 +546,7 @@ function UsageChart({
   todayKey,
 }: {
   data: UsageChartDay[];
+  mode: ChartMode;
   axisMax: number;
   axisMarks: number[];
   selectedDate: string | null;
@@ -429,6 +560,7 @@ function UsageChart({
   const plotWidth = Math.max(chartWidth, 640);
   const limitPath = buildLimitPath(
     data,
+    mode,
     axisMax,
     barMetrics.width,
     barMetrics.gap,
@@ -448,7 +580,7 @@ function UsageChart({
               className="absolute left-0 right-0 -translate-y-1/2 text-right text-xs text-gray-500"
               style={{ bottom }}
             >
-              {formatDurationCompact(mark)}
+              {formatAxisMark(mark, mode)}
             </div>
           );
         })}
@@ -501,7 +633,7 @@ function UsageChart({
             >
               <div className="text-xs font-medium text-white">{hoveredSegment.label}</div>
               <div className="mt-1 text-xs text-gray-300">
-                {formatDurationCompact(hoveredSegment.seconds)}
+                {formatMetricValue(hoveredSegment.value, mode)}
               </div>
             </div>
           )}
@@ -514,7 +646,8 @@ function UsageChart({
               const chartSegments = getChartSegments(day);
               const isToday = day.date === todayKey;
               const isSelected = day.date === selectedDate;
-              const dayHeight = (day.usageSeconds / axisMax) * CHART_HEIGHT;
+              const chartValue = getChartValue(day, mode);
+              const dayHeight = (chartValue / axisMax) * CHART_HEIGHT;
               let cumulativeSeconds = day.usageSeconds;
 
               return (
@@ -524,11 +657,11 @@ function UsageChart({
                   onClick={() => onSelectDate(day.date === selectedDate ? null : day.date)}
                   className="group relative h-full shrink-0"
                   style={{ width: `${barMetrics.width}px` }}
-                  aria-label={`${formatDay(day.date)}: ${formatDurationCompact(day.usageSeconds)}`}
+                  aria-label={`${formatDay(day.date)}: ${formatMetricValue(chartValue, mode)}`}
                   aria-pressed={isSelected}
                 >
                   <div className="absolute inset-x-0 bottom-0 top-0 flex items-end">
-                    {day.usageSeconds > 0 ? (
+                    {chartValue > 0 ? (
                       <div
                         className={`w-full overflow-hidden rounded-t-md transition-all ${
                           isSelected
@@ -537,44 +670,64 @@ function UsageChart({
                             ? "ring-1 ring-inset ring-teal-400/70"
                             : "group-hover:ring-1 group-hover:ring-inset group-hover:ring-white/20"
                         }`}
-                        style={{ height: `${(day.usageSeconds / axisMax) * CHART_HEIGHT}px` }}
+                        style={{ height: `${dayHeight}px` }}
                       >
-                        <div className="flex h-full flex-col justify-end">
-                          {chartSegments.map((segment) => {
-                            const isHovered = hoveredSegment?.key === segment.key;
-                            const isMuted = hoveredSegment != null && !isHovered;
-                            const segmentTop =
-                              CHART_HEIGHT - (cumulativeSeconds / day.usageSeconds) * dayHeight;
-                            cumulativeSeconds -= segment.seconds;
+                        {mode === "time" ? (
+                          <div className="flex h-full flex-col justify-end">
+                            {chartSegments.map((segment) => {
+                              const isHovered = hoveredSegment?.key === segment.key;
+                              const isMuted = hoveredSegment != null && !isHovered;
+                              const segmentTop =
+                                CHART_HEIGHT - (cumulativeSeconds / day.usageSeconds) * dayHeight;
+                              cumulativeSeconds -= segment.seconds;
 
-                            return (
-                              <div
-                                key={segment.key}
-                                onMouseEnter={() =>
-                                  setHoveredSegment({
-                                    key: segment.key,
-                                    dayDate: day.date,
-                                    label: segment.label,
-                                    seconds: segment.seconds,
-                                    x: index * (barMetrics.width + barMetrics.gap),
-                                    top: segmentTop,
-                                  })
-                                }
-                                onMouseLeave={() =>
-                                  setHoveredSegment((current) =>
-                                    current?.key === segment.key ? null : current,
-                                  )
-                                }
-                                className="transition-opacity duration-150"
-                                style={{
-                                  height: `${(segment.seconds / day.usageSeconds) * 100}%`,
-                                  backgroundColor: segment.color,
-                                  opacity: isMuted ? 0.28 : 1,
-                                }}
-                              />
-                            );
-                          })}
-                        </div>
+                              return (
+                                <div
+                                  key={segment.key}
+                                  onMouseEnter={() =>
+                                    setHoveredSegment({
+                                      key: segment.key,
+                                      label: segment.label,
+                                      value: segment.seconds,
+                                      x: index * (barMetrics.width + barMetrics.gap),
+                                      top: segmentTop,
+                                    })
+                                  }
+                                  onMouseLeave={() =>
+                                    setHoveredSegment((current) =>
+                                      current?.key === segment.key ? null : current,
+                                    )
+                                  }
+                                  className="transition-opacity duration-150"
+                                  style={{
+                                    height: `${(segment.seconds / day.usageSeconds) * 100}%`,
+                                    backgroundColor: segment.color,
+                                    opacity: isMuted ? 0.28 : 1,
+                                  }}
+                                />
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div
+                            onMouseEnter={() =>
+                              setHoveredSegment({
+                                key: `${day.date}-opens`,
+                                label: formatDay(day.date),
+                                value: day.openCount,
+                                x: index * (barMetrics.width + barMetrics.gap),
+                                top: CHART_HEIGHT - dayHeight,
+                              })
+                            }
+                            onMouseLeave={() =>
+                              setHoveredSegment((current) =>
+                                current?.key === `${day.date}-opens` ? null : current,
+                              )
+                            }
+                            className="h-full w-full transition-opacity duration-150"
+                            style={{ backgroundColor: OPEN_BAR_COLOR }}
+                          />
+                        )}
                       </div>
                     ) : (
                       <div className="h-px w-full bg-gray-800" />
@@ -638,6 +791,7 @@ function BreakdownPanel({
     ? "Overall average"
     : "Recent range average";
   const totalSeconds = isSelectedDay ? selectedDay.usageSeconds : rangeAverage.averageSeconds;
+  const openCount = isSelectedDay ? selectedDay.openCount : rangeAverage.averageOpens;
   const feedSegments = isSelectedDay ? selectedDay.feedSegments : rangeAverage.feedSegments;
   const subredditSegments = isSelectedDay
     ? selectedDay.subredditSegments
@@ -663,6 +817,9 @@ function BreakdownPanel({
           <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
             <h3 className="text-2xl font-semibold text-white">{title}</h3>
             <p className="text-lg font-semibold text-teal-300">{formatDurationCompact(totalSeconds)}</p>
+            <p className="text-sm font-medium uppercase tracking-[0.18em] text-gray-500">
+              {formatOpenCount(openCount)}
+            </p>
           </div>
         </div>
         <button

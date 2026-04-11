@@ -2,7 +2,7 @@
 
 import type { UsageStatusPayload } from "./types";
 
-const USAGE_CACHE_KEY = "disconnect_reddit_usage_status_v1";
+const USAGE_CACHE_KEY = "disconnect_reddit_usage_status_v2";
 
 export function getCachedUsageStatus(): UsageStatusPayload | null {
   if (typeof window === "undefined") return null;

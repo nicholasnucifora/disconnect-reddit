@@ -69,10 +69,17 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = (await request.json().catch(() => ({}))) as Partial<UsageSettingsPayload>;
+    const parsedDailyOpenLimit = Number(body.dailyOpenLimit);
 
     const payload: UsageSettingsPayload = {
       timezone: typeof body.timezone === "string" ? body.timezone : "Australia/Brisbane",
       dailyLimitSeconds: Math.max(60, Number(body.dailyLimitSeconds) || 3600),
+      dailyOpenLimit:
+        body.dailyOpenLimit == null
+          ? null
+          : Number.isFinite(parsedDailyOpenLimit) && parsedDailyOpenLimit > 0
+          ? Math.floor(parsedDailyOpenLimit)
+          : null,
       schedules: sanitizeSchedules(body.schedules),
     };
 
