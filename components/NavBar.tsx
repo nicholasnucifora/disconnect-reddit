@@ -8,7 +8,7 @@ interface NavBarProps {
 }
 
 export default function NavBar({ onMenuClick }: NavBarProps) {
-  const { headerLabel, headerTone, progressPercent } = useUsage();
+  const { headerLabel, headerSecondaryLabel, headerTone, progressPercent } = useUsage();
 
   const pillTone =
     headerTone === "danger"
@@ -53,13 +53,18 @@ export default function NavBar({ onMenuClick }: NavBarProps) {
         </div>
 
         <div
-          className={`w-[6.75rem] flex-shrink-0 rounded-lg border px-2 py-1.5 md:w-[14rem] md:rounded-xl md:px-3 ${pillTone.outer}`}
+          className={`w-[8rem] flex-shrink-0 rounded-lg border px-2 py-1.5 md:w-[16rem] md:rounded-xl md:px-3 ${pillTone.outer}`}
           aria-label={headerLabel ?? "Loading"}
         >
           <div className={`truncate text-[11px] font-medium ${pillTone.text} md:text-sm`}>
             {headerLabel ?? "Loading"}
           </div>
-          <div className="mt-2 h-1 overflow-hidden rounded-full bg-gray-800 md:mt-3 md:h-1.5">
+          {headerSecondaryLabel && (
+            <div className="mt-0.5 truncate text-[10px] text-gray-400 md:text-xs">
+              {headerSecondaryLabel}
+            </div>
+          )}
+          <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-gray-800 md:mt-2 md:h-1.5">
             <div
               className={`h-full rounded-full transition-all duration-300 ${pillTone.bar}`}
               style={{ width: `${progressPercent}%` }}

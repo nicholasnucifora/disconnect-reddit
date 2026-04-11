@@ -35,6 +35,7 @@ interface UsageContextValue {
   isOpenLimitReached: boolean;
   canBrowse: boolean;
   headerLabel: string | null;
+  headerSecondaryLabel: string | null;
   headerTone: "neutral" | "warning" | "danger";
   progressPercent: number;
   currentContext: UsageBrowsingContext | null;
@@ -311,9 +312,15 @@ export function UsageProvider({ children }: { children: ReactNode }) {
         : 0;
 
     let headerLabel: string | null = null;
+    let headerSecondaryLabel: string | null = null;
     let headerTone: "neutral" | "warning" | "danger" = "neutral";
 
     if (status) {
+      const remainingOpensLabel =
+        status.remainingOpens == null
+          ? null
+          : `${status.remainingOpens} open${status.remainingOpens === 1 ? "" : "s"} left`;
+
       if (status.isBlockedBySchedule) {
         headerLabel = "Blocked";
         headerTone = "danger";
@@ -325,7 +332,21 @@ export function UsageProvider({ children }: { children: ReactNode }) {
         headerTone = "danger";
       } else if (status.remainingSeconds != null) {
         headerLabel = `${formatDurationCompact(status.remainingSeconds)} left`;
-        headerTone = status.remainingSeconds < 15 * 60 ? "warning" : "neutral";
+        headerSecondaryLabel = remainingOpensLabel;
+        headerTone =
+          status.remainingOpens != null && status.remainingOpens <= 1
+            ? "danger"
+            : status.remainingSeconds < 15 * 60 || (status.remainingOpens != null && status.remainingOpens <= 2)
+            ? "warning"
+            : "neutral";
+      } else if (remainingOpensLabel) {
+        headerLabel = remainingOpensLabel;
+        headerTone =
+          status.remainingOpens != null && status.remainingOpens <= 1
+            ? "danger"
+            : status.remainingOpens != null && status.remainingOpens <= 2
+            ? "warning"
+            : "neutral";
       }
     }
 
@@ -338,6 +359,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       isOpenLimitReached,
       canBrowse,
       headerLabel,
+      headerSecondaryLabel,
       headerTone,
       progressPercent,
       currentContext,
