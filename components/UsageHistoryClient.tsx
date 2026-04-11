@@ -25,6 +25,7 @@ const LIMIT_LINE_COLOR = "#f59e0b";
 const OPEN_BAR_COLOR = "#2dd4bf";
 const CHART_OTHER_THRESHOLD = 0.15;
 const CHART_HEIGHT = 320;
+const CHART_TOP_PADDING = 14;
 const LABEL_HEIGHT = 40;
 
 type ChartMode = (typeof CHART_MODE_OPTIONS)[number]["mode"];
@@ -158,6 +159,16 @@ function formatAxisMark(value: number, mode: ChartMode) {
   return mode === "time" ? formatDurationCompact(value) : String(value);
 }
 
+function getPlotHeight() {
+  return CHART_HEIGHT - CHART_TOP_PADDING;
+}
+
+function getChartY(value: number, axisMax: number) {
+  const safeMax = Math.max(axisMax, 1);
+  const ratio = Math.max(0, Math.min(value / safeMax, 1));
+  return CHART_TOP_PADDING + (1 - ratio) * getPlotHeight();
+}
+
 function getBarMetrics(dayCount: number) {
   if (dayCount <= 14) return { width: 22, gap: 6 };
   if (dayCount <= 31) return { width: 14, gap: 4 };
@@ -190,7 +201,7 @@ function buildLimitPath(
     if (limit == null) return;
 
     const x = index * (barWidth + gap) + barWidth / 2;
-    const y = chartHeight - (Math.min(limit, axisMax) / axisMax) * chartHeight;
+    const y = getChartY(Math.min(limit, axisMax), axisMax);
     points.push({ x, y });
   });
 
@@ -564,13 +575,13 @@ function UsageChart({
     <div className="mt-8 grid grid-cols-[3rem_1fr] gap-4">
       <div className="relative" style={{ height: `${CHART_HEIGHT + LABEL_HEIGHT}px` }}>
         {axisMarks.map((mark) => {
-          const bottom = `${(mark / axisMax) * CHART_HEIGHT}px`;
+          const top = `${getChartY(mark, axisMax)}px`;
 
           return (
             <div
               key={mark}
               className="absolute left-0 right-0 -translate-y-1/2 text-right text-xs text-gray-500"
-              style={{ bottom }}
+              style={{ top }}
             >
               {formatAxisMark(mark, mode)}
             </div>
@@ -591,7 +602,7 @@ function UsageChart({
               <div
                 key={mark}
                 className={`absolute inset-x-0 border-t ${mark === 0 ? "border-gray-700" : "border-white/8"}`}
-                style={{ bottom: `${(mark / axisMax) * CHART_HEIGHT}px` }}
+                style={{ top: `${getChartY(mark, axisMax)}px` }}
               />
             ))}
 
@@ -639,7 +650,7 @@ function UsageChart({
               const isToday = day.date === todayKey;
               const isSelected = day.date === selectedDate;
               const chartValue = getChartValue(day, mode);
-              const dayHeight = (chartValue / axisMax) * CHART_HEIGHT;
+              const dayHeight = (chartValue / Math.max(axisMax, 1)) * getPlotHeight();
               let cumulativeSeconds = day.usageSeconds;
 
               return (
