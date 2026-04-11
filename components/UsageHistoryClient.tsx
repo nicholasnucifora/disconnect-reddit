@@ -138,26 +138,18 @@ function formatOpenDelta(value: number) {
   return `${sign}${formatOpenCount(Math.abs(value))}`;
 }
 
-function getNiceStep(roughStep: number, minimum: number) {
-  const safe = Math.max(roughStep, minimum);
-  const magnitude = 10 ** Math.floor(Math.log10(safe));
-  const normalized = safe / magnitude;
-
-  if (normalized <= 1) return magnitude;
-  if (normalized <= 2) return 2 * magnitude;
-  if (normalized <= 3) return 3 * magnitude;
-  if (normalized <= 5) return 5 * magnitude;
-  return 10 * magnitude;
-}
-
 function getAxisConfig(data: UsageChartDay[], mode: ChartMode) {
-  const rawMax = data.reduce(
-    (max, day) => Math.max(max, getChartValue(day, mode), getChartLimit(day, mode) ?? 0),
-    mode === "time" ? 15 * 60 : 4,
+  const highestLimit = data.reduce(
+    (max, day) => Math.max(max, getChartLimit(day, mode) ?? 0),
+    0,
   );
-  const step = getNiceStep(rawMax / 4, mode === "time" ? 60 : 1);
-  const max = Math.max(step * 4, rawMax);
-  const marks = [0, step, step * 2, step * 3, step * 4];
+  const highestValue = data.reduce(
+    (max, day) => Math.max(max, getChartValue(day, mode)),
+    0,
+  );
+  const fallbackMax = mode === "time" ? 15 * 60 : 4;
+  const max = Math.max(highestLimit, highestValue, fallbackMax);
+  const marks = [0, max * 0.25, max * 0.5, max * 0.75, max];
 
   return { max, marks };
 }
