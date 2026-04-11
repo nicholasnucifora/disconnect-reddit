@@ -188,7 +188,7 @@ export default function UsageHistoryClient() {
   const [rangeMode, setRangeMode] = useState<UsageHistoryRangeMode>("recent");
   const [data, setData] = useState<UsageHistoryPayload | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     let ignore = false;
@@ -203,6 +203,7 @@ export default function UsageHistoryClient() {
         if (!ignore) {
           setData(payload);
           setSelectedDate((current) => {
+            if (current === null) return null;
             if (current && payload.chart.some((day) => day.date === current)) return current;
             if (payload.chart.some((day) => day.date === payload.today.todayKey)) return payload.today.todayKey;
             return payload.chart[payload.chart.length - 1]?.date ?? null;
@@ -222,8 +223,8 @@ export default function UsageHistoryClient() {
   const axis = useMemo(() => getAxisConfig(data?.chart ?? []), [data]);
 
   const selectedDay = useMemo(() => {
-    if (!data) return null;
-    return data.chart.find((day) => day.date === selectedDate) ?? data.chart[data.chart.length - 1] ?? null;
+    if (!data || selectedDate == null) return null;
+    return data.chart.find((day) => day.date === selectedDate) ?? null;
   }, [data, selectedDate]);
 
   const yesterdayStats = useMemo(() => {
@@ -288,7 +289,17 @@ export default function UsageHistoryClient() {
         {data && (
           <section className="mt-8 grid gap-4 md:grid-cols-4">
             <StatCard label="Total usage" value={formatDurationCompact(data.stats.totalSeconds)} />
-            <StatCard label="Daily average" value={formatDurationCompact(data.stats.averageSeconds)} />
+            <StatCard
+              label="Daily average"
+              value={formatDurationCompact(data.stats.averageSeconds)}
+              detail={
+                data.stats.averageDayCount > 0
+                  ? `Across ${data.stats.averageDayCount} completed tracked day${
+                      data.stats.averageDayCount === 1 ? "" : "s"
+                    }`
+                  : "Waiting for a completed tracked day"
+              }
+            />
             <StatCard
               label="Yesterday's Usage"
               value={formatDurationCompact(yesterdayStats?.usageSeconds ?? 0)}
@@ -308,7 +319,7 @@ export default function UsageHistoryClient() {
             <div>
               <h2 className="text-xl font-semibold text-white">Daily usage chart</h2>
               <p className="mt-1 max-w-2xl text-sm text-gray-400">
-                Hover a color band to identify the feed. Small slices still collapse into Other on the chart, and selecting a day shows the exact feed breakdown below.
+                Hover a color band to identify the feed. Small slices still collapse into Other on the chart, and clicking the same day again clears the selection back to the range average below.
               </p>
               {data && <p className="mt-2 text-xs font-medium uppercase tracking-[0.18em] text-gray-500">{rangeSummary}</p>}
             </div>
@@ -340,16 +351,21 @@ export default function UsageHistoryClient() {
               data={data.chart}
               axisMax={axis.max}
               axisMarks={axis.marks}
-              selectedDate={selectedDate}
+              selectedDate={selectedDate ?? null}
               onSelectDate={setSelectedDate}
               todayKey={data.today.todayKey}
             />
           )}
         </section>
 
-        {selectedDay && (
+        {data && data.chart.length > 0 && (
           <section className="mt-8 grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-            <BreakdownPanel day={selectedDay} />
+            <BreakdownPanel
+              selectedDay={selectedDay}
+              rangeAverage={data.rangeAverage}
+              rangeMode={data.rangeMode}
+              onReset={() => setSelectedDate(null)}
+            />
             <div className="rounded-3xl border border-gray-800 bg-gray-900/70 p-6">
               <h3 className="text-lg font-semibold text-white">Manage daily usage</h3>
               <p className="mt-2 text-sm leading-6 text-gray-400">
@@ -403,7 +419,7 @@ function UsageChart({
   axisMax: number;
   axisMarks: number[];
   selectedDate: string | null;
-  onSelectDate: (date: string) => void;
+  onSelectDate: (date: string | null) => void;
   todayKey: string;
 }) {
   const [hoveredSegment, setHoveredSegment] = useState<HoveredSegment | null>(null);
@@ -504,10 +520,12 @@ function UsageChart({
               return (
                 <button
                   key={day.date}
-                  onClick={() => onSelectDate(day.date)}
+                  type="button"
+                  onClick={() => onSelectDate(day.date === selectedDate ? null : day.date)}
                   className="group relative h-full shrink-0"
                   style={{ width: `${barMetrics.width}px` }}
                   aria-label={`${formatDay(day.date)}: ${formatDurationCompact(day.usageSeconds)}`}
+                  aria-pressed={isSelected}
                 >
                   <div className="absolute inset-x-0 bottom-0 top-0 flex items-end">
                     {day.usageSeconds > 0 ? (
@@ -602,32 +620,79 @@ function UsageChart({
   );
 }
 
-function BreakdownPanel({ day }: { day: UsageChartDay }) {
+function BreakdownPanel({
+  selectedDay,
+  rangeAverage,
+  rangeMode,
+  onReset,
+}: {
+  selectedDay: UsageChartDay | null;
+  rangeAverage: UsageHistoryPayload["rangeAverage"];
+  rangeMode: UsageHistoryRangeMode;
+  onReset: () => void;
+}) {
+  const isSelectedDay = selectedDay != null;
+  const title = isSelectedDay
+    ? formatDay(selectedDay.date)
+    : rangeMode === "overall"
+    ? "Overall average"
+    : "Recent range average";
+  const totalSeconds = isSelectedDay ? selectedDay.usageSeconds : rangeAverage.averageSeconds;
+  const feedSegments = isSelectedDay ? selectedDay.feedSegments : rangeAverage.feedSegments;
+  const subredditSegments = isSelectedDay
+    ? selectedDay.subredditSegments
+    : rangeAverage.subredditSegments;
+  const feedDescription = isSelectedDay
+    ? "Small chart slices roll into Other, but every tracked feed for this day is listed here."
+    : rangeAverage.dayCount > 0
+    ? `Per-feed averages use the same ${rangeAverage.dayCount} completed tracked day${
+        rangeAverage.dayCount === 1 ? "" : "s"
+      } as the total, so the rows add back up.`
+    : "Finish at least one tracked day to see a range-wide average breakdown.";
+  const subredditDescription = isSelectedDay
+    ? null
+    : rangeAverage.dayCount > 0
+    ? `Average time per completed tracked day across the current ${rangeMode} range.`
+    : null;
+
   return (
     <div className="rounded-3xl border border-gray-800 bg-gray-900/70 p-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-gray-500">Selected day</p>
-          <h3 className="mt-1 text-2xl font-semibold text-white">{formatDay(day.date)}</h3>
+          <p className="text-sm text-gray-500">{isSelectedDay ? "Selected day" : "Breakdown basis"}</p>
+          <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <h3 className="text-2xl font-semibold text-white">{title}</h3>
+            <p className="text-lg font-semibold text-teal-300">{formatDurationCompact(totalSeconds)}</p>
+          </div>
         </div>
-        <div className="text-right">
-          <p className="text-sm text-gray-500">Total</p>
-          <p className="mt-1 text-xl font-semibold text-white">{formatDurationCompact(day.usageSeconds)}</p>
-        </div>
+        <button
+          type="button"
+          onClick={onReset}
+          disabled={!isSelectedDay}
+          className={`rounded-full px-4 py-2 text-sm font-medium transition-colors ${
+            isSelectedDay
+              ? "border border-gray-700 bg-gray-950 text-gray-200 hover:border-gray-600 hover:bg-gray-900"
+              : "cursor-default border border-gray-800 bg-gray-950/50 text-gray-500"
+          }`}
+        >
+          {isSelectedDay ? "Reset" : "Showing average"}
+        </button>
       </div>
 
       <div className="mt-6">
         <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-gray-500">
           Feed breakdown
         </h4>
-        <p className="mt-2 text-sm text-gray-500">
-          Small chart slices roll into Other, but every tracked feed for this day is listed here.
-        </p>
+        <p className="mt-2 text-sm text-gray-500">{feedDescription}</p>
         <div className="mt-4 space-y-3">
-          {day.feedSegments.length === 0 ? (
-            <p className="text-sm text-gray-500">No tracked feed activity for this day.</p>
+          {feedSegments.length === 0 ? (
+            <p className="text-sm text-gray-500">
+              {isSelectedDay
+                ? "No tracked feed activity for this day."
+                : "No range-wide feed averages yet."}
+            </p>
           ) : (
-            day.feedSegments.map((segment) => (
+            feedSegments.map((segment) => (
               <div key={segment.feedId} className="rounded-2xl border border-gray-800 bg-gray-950/70 p-4">
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
@@ -643,7 +708,7 @@ function BreakdownPanel({ day }: { day: UsageChartDay }) {
                   <div
                     className="h-full rounded-full"
                     style={{
-                      width: `${day.usageSeconds ? (segment.seconds / day.usageSeconds) * 100 : 0}%`,
+                      width: `${totalSeconds ? (segment.seconds / totalSeconds) * 100 : 0}%`,
                       backgroundColor: getFeedColor(segment.feedId),
                     }}
                   />
@@ -658,13 +723,16 @@ function BreakdownPanel({ day }: { day: UsageChartDay }) {
         <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-gray-500">
           Subreddit breakdown
         </h4>
+        {subredditDescription ? <p className="mt-2 text-sm text-gray-500">{subredditDescription}</p> : null}
         <div className="mt-4 space-y-3">
-          {day.subredditSegments.length === 0 ? (
+          {subredditSegments.length === 0 ? (
             <p className="text-sm text-gray-500">
-              No subreddit-specific data was captured for this day. Mixed feed browsing is still counted toward feed totals.
+              {isSelectedDay
+                ? "No subreddit-specific data was captured for this day. Mixed feed browsing is still counted toward feed totals."
+                : "No subreddit-level range averages yet. Mixed feed browsing still counts toward the feed averages above."}
             </p>
           ) : (
-            day.subredditSegments.slice(0, 8).map((segment) => (
+            subredditSegments.slice(0, 8).map((segment) => (
               <div
                 key={`${segment.feedId}-${segment.subreddit}`}
                 className="flex items-center justify-between rounded-2xl border border-gray-800 bg-gray-950/70 px-4 py-3"

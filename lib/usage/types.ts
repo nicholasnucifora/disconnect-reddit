@@ -40,6 +40,19 @@ export interface UsageEventRow {
   subreddit: string | null;
 }
 
+export interface UsageFeedBreakdownSegment {
+  feedId: string;
+  feedName: string;
+  seconds: number;
+}
+
+export interface UsageSubredditBreakdownSegment {
+  subreddit: string;
+  seconds: number;
+  feedId: string;
+  feedName: string;
+}
+
 export interface UsageWindowStatus {
   id: string;
   start_time: string;
@@ -81,17 +94,8 @@ export interface UsageChartDay {
   date: string;
   usageSeconds: number;
   limitSeconds: number | null;
-  feedSegments: Array<{
-    feedId: string;
-    feedName: string;
-    seconds: number;
-  }>;
-  subredditSegments: Array<{
-    subreddit: string;
-    seconds: number;
-    feedId: string;
-    feedName: string;
-  }>;
+  feedSegments: UsageFeedBreakdownSegment[];
+  subredditSegments: UsageSubredditBreakdownSegment[];
 }
 
 export type UsageHistoryRangeMode = "recent" | "overall";
@@ -103,7 +107,14 @@ export interface UsageHistoryPayload {
   stats: {
     totalSeconds: number;
     activeDays: number;
+    averageDayCount: number;
     averageSeconds: number;
+  };
+  rangeAverage: {
+    dayCount: number;
+    averageSeconds: number;
+    feedSegments: UsageFeedBreakdownSegment[];
+    subredditSegments: UsageSubredditBreakdownSegment[];
   };
   today: UsageStatusPayload;
   chart: UsageChartDay[];

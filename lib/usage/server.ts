@@ -5,6 +5,7 @@ import {
   USAGE_UI_BUFFER_SECONDS,
   type UsageChartDay,
   type UsageEventRow,
+  type UsageFeedBreakdownSegment,
   type UsageHistoryPayload,
   type UsageHistoryRangeMode,
   type UsageScheduleRow,
@@ -13,6 +14,7 @@ import {
   type UsageSettingsRow,
   type UsageSettingsPayload,
   type UsageStatusPayload,
+  type UsageSubredditBreakdownSegment,
   type UsageTrackEntryInput,
   type UsageWindowStatus,
 } from "./types";
@@ -458,6 +460,115 @@ function getDateSpanDaysInclusive(startKey: string, endKey: string): number {
   return Math.max(1, Math.floor((endMs - startMs) / (24 * 60 * 60 * 1000)) + 1);
 }
 
+function allocateAverageSeconds<T extends { seconds: number }>(
+  segments: T[],
+  dayCount: number,
+  targetTotal: number,
+  getTieKey: (segment: T) => string,
+): T[] {
+  if (dayCount <= 0 || segments.length === 0 || targetTotal <= 0) return [];
+
+  const withFractions = segments.map((segment) => {
+    const rawAverage = segment.seconds / dayCount;
+    const baseSeconds = Math.floor(rawAverage);
+
+    return {
+      segment,
+      baseSeconds,
+      fractionalSeconds: rawAverage - baseSeconds,
+    };
+  });
+
+  let remainingSeconds =
+    targetTotal - withFractions.reduce((sum, item) => sum + item.baseSeconds, 0);
+
+  withFractions.sort((left, right) => {
+    if (right.fractionalSeconds !== left.fractionalSeconds) {
+      return right.fractionalSeconds - left.fractionalSeconds;
+    }
+    if (right.segment.seconds !== left.segment.seconds) {
+      return right.segment.seconds - left.segment.seconds;
+    }
+    return getTieKey(left.segment).localeCompare(getTieKey(right.segment));
+  });
+
+  const allocated = withFractions.map((item) => ({
+    ...item.segment,
+    seconds: item.baseSeconds,
+  }));
+
+  for (let index = 0; index < allocated.length && remainingSeconds > 0; index += 1) {
+    allocated[index].seconds += 1;
+    remainingSeconds -= 1;
+  }
+
+  return allocated
+    .filter((segment) => segment.seconds > 0)
+    .sort((left, right) => {
+      if (right.seconds !== left.seconds) return right.seconds - left.seconds;
+      return getTieKey(left).localeCompare(getTieKey(right));
+    });
+}
+
+function buildRangeAverage(
+  chart: UsageChartDay[],
+  todayKey: string,
+): UsageHistoryPayload["rangeAverage"] {
+  const averageDays = chart.filter((day) => day.date !== todayKey && day.usageSeconds > 0);
+
+  if (averageDays.length === 0) {
+    return {
+      dayCount: 0,
+      averageSeconds: 0,
+      feedSegments: [],
+      subredditSegments: [],
+    };
+  }
+
+  const totalSeconds = averageDays.reduce((sum, day) => sum + day.usageSeconds, 0);
+  const averageSeconds = Math.round(totalSeconds / averageDays.length);
+  const feedTotals = new Map<string, UsageFeedBreakdownSegment>();
+  const subredditTotals = new Map<string, UsageSubredditBreakdownSegment>();
+
+  for (const day of averageDays) {
+    for (const segment of day.feedSegments) {
+      const current = feedTotals.get(segment.feedId);
+      if (current) {
+        current.seconds += segment.seconds;
+      } else {
+        feedTotals.set(segment.feedId, { ...segment });
+      }
+    }
+
+    for (const segment of day.subredditSegments) {
+      const key = `${segment.feedId}::${segment.subreddit}`;
+      const current = subredditTotals.get(key);
+      if (current) {
+        current.seconds += segment.seconds;
+      } else {
+        subredditTotals.set(key, { ...segment });
+      }
+    }
+  }
+
+  return {
+    dayCount: averageDays.length,
+    averageSeconds,
+    feedSegments: allocateAverageSeconds(
+      Array.from(feedTotals.values()),
+      averageDays.length,
+      averageSeconds,
+      (segment) => `${segment.feedName}:${segment.feedId}`,
+    ),
+    subredditSegments: allocateAverageSeconds(
+      Array.from(subredditTotals.values()),
+      averageDays.length,
+      averageSeconds,
+      (segment) => `${segment.feedName}:${segment.subreddit}:${segment.feedId}`,
+    ),
+  };
+}
+
 export async function getUsageHistory(
   rangeMode: UsageHistoryRangeMode,
   now = new Date(),
@@ -582,9 +693,8 @@ export async function getUsageHistory(
   });
 
   const totalSeconds = chart.reduce((sum, day) => sum + day.usageSeconds, 0);
-  const completedDays = chart.filter((day) => day.date !== todayKey);
-  const averageDays = completedDays.filter((day) => day.usageSeconds > 0);
   const activeDays = chart.filter((day) => day.usageSeconds > 0).length;
+  const rangeAverage = buildRangeAverage(chart, todayKey);
 
   return {
     rangeMode: safeMode,
@@ -593,13 +703,10 @@ export async function getUsageHistory(
     stats: {
       totalSeconds,
       activeDays,
-      averageSeconds:
-        averageDays.length > 0
-          ? Math.round(
-              averageDays.reduce((sum, day) => sum + day.usageSeconds, 0) / averageDays.length,
-            )
-          : 0,
+      averageDayCount: rangeAverage.dayCount,
+      averageSeconds: rangeAverage.averageSeconds,
     },
+    rangeAverage,
     today: buildStatusPayload(settings, schedules, now),
     chart,
   };
