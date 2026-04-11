@@ -458,7 +458,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           </div>
 
           {post.isSelf && post.selftext && (
-            <p className="mt-3 line-clamp-5 text-base leading-relaxed text-gray-400">
+            <p className="mt-3 line-clamp-5 whitespace-pre-line text-base leading-relaxed text-gray-400">
               {post.selftext
                 .replace(/!\[.*?\]\(.*?\)/g, "")
                 .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
@@ -467,7 +467,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
                 .replace(/^\s*[-*+]\s+/gm, "")
                 .replace(/^\s*\d+\.\s+/gm, "")
                 .replace(/^>\s*/gm, "")
-                .replace(/\n{2,}/g, "\n")
+                .replace(/\n{3,}/g, "\n\n")
                 .trim()}
             </p>
           )}
