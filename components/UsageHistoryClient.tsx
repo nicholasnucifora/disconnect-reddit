@@ -96,6 +96,21 @@ function formatTrackedSince(date: string | null) {
   })}`;
 }
 
+function getPreviousDateKey(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  date.setUTCDate(date.getUTCDate() - 1);
+
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}-${String(
+    date.getUTCDate(),
+  ).padStart(2, "0")}`;
+}
+
+function formatDeltaCompact(seconds: number) {
+  const sign = seconds > 0 ? "+" : seconds < 0 ? "-" : "";
+  return `${sign}${formatDurationCompact(Math.abs(seconds))}`;
+}
+
 function getNiceStep(roughStep: number) {
   const safe = Math.max(roughStep, 60);
   const magnitude = 10 ** Math.floor(Math.log10(safe));
@@ -211,6 +226,22 @@ export default function UsageHistoryClient() {
     return data.chart.find((day) => day.date === selectedDate) ?? data.chart[data.chart.length - 1] ?? null;
   }, [data, selectedDate]);
 
+  const yesterdayStats = useMemo(() => {
+    if (!data) return null;
+
+    const yesterdayKey = getPreviousDateKey(data.today.todayKey);
+    const yesterdayUsage = data.chart.find((day) => day.date === yesterdayKey)?.usageSeconds ?? 0;
+    const delta = yesterdayUsage - data.stats.averageSeconds;
+
+    return {
+      usageSeconds: yesterdayUsage,
+      delta,
+      tone:
+        delta < 0 ? "text-emerald-300" : delta > 0 ? "text-red-300" : "text-gray-400",
+      arrow: delta < 0 ? "↓" : delta > 0 ? "↑" : "→",
+    };
+  }, [data]);
+
   const rangeSummary = useMemo(() => {
     if (!data) return "";
     if (data.rangeMode === "overall") return formatTrackedSince(data.trackedSince);
@@ -257,8 +288,17 @@ export default function UsageHistoryClient() {
         {data && (
           <section className="mt-8 grid gap-4 md:grid-cols-4">
             <StatCard label="Total usage" value={formatDurationCompact(data.stats.totalSeconds)} />
-            <StatCard label="Active days" value={String(data.stats.activeDays)} />
             <StatCard label="Daily average" value={formatDurationCompact(data.stats.averageSeconds)} />
+            <StatCard
+              label="Yesterday's Usage"
+              value={formatDurationCompact(yesterdayStats?.usageSeconds ?? 0)}
+              detail={
+                yesterdayStats
+                  ? `${yesterdayStats.arrow} ${formatDeltaCompact(yesterdayStats.delta)} vs average`
+                  : null
+              }
+              detailClassName={yesterdayStats?.tone}
+            />
             <StatCard label="Resets in" value={formatResetDistance(data.resetAt)} />
           </section>
         )}
@@ -329,11 +369,24 @@ export default function UsageHistoryClient() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  detail,
+  detailClassName,
+}: {
+  label: string;
+  value: string;
+  detail?: string | null;
+  detailClassName?: string;
+}) {
   return (
     <div className="rounded-3xl border border-gray-800 bg-gray-900/70 p-5">
       <p className="text-sm text-gray-500">{label}</p>
       <p className="mt-3 text-3xl font-semibold text-white">{value}</p>
+      {detail ? (
+        <p className={`mt-2 text-sm font-medium ${detailClassName ?? "text-gray-400"}`}>{detail}</p>
+      ) : null}
     </div>
   );
 }
