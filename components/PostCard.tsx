@@ -109,6 +109,18 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     router.push(detailUrl);
   }
 
+  function handleArticleClick(event: React.MouseEvent<HTMLElement>) {
+    const target = event.target as HTMLElement | null;
+    if (
+      target?.closest(
+        "a, button, input, textarea, select, summary, details, [role='button'], [data-card-swipe-ignore='true']"
+      )
+    ) {
+      return;
+    }
+    navigateToPost();
+  }
+
   function handleDismiss() {
     suppressClickUntilRef.current = Date.now() + SWIPE_CLICK_SUPPRESSION_MS;
     if (onDismiss) {
@@ -392,6 +404,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
           clicked ? "opacity-50" : ""
         }`}
         style={{ touchAction: "pan-y" }}
+        onClick={handleArticleClick}
         onTouchStart={handleCardTouchStart}
         onTouchMove={handleCardTouchMove}
         onTouchEnd={handleCardTouchEnd}
