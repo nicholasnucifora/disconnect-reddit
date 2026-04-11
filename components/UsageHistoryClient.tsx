@@ -34,6 +34,8 @@ type HoveredSegment = {
   dayDate: string;
   label: string;
   seconds: number;
+  x: number;
+  top: number;
 };
 
 function getFeedColor(feedId: string) {
@@ -140,18 +142,31 @@ function buildLimitPath(
   barWidth: number,
   gap: number,
   chartHeight: number,
+  plotWidth: number,
 ) {
-  const commands: string[] = [];
+  const points: Array<{ x: number; y: number }> = [];
 
   data.forEach((day, index) => {
     if (day.limitSeconds == null) return;
 
     const x = index * (barWidth + gap) + barWidth / 2;
     const y = chartHeight - (Math.min(day.limitSeconds, axisMax) / axisMax) * chartHeight;
-    commands.push(commands.length === 0 ? `M ${x} ${y}` : `L ${x} ${y}`);
+    points.push({ x, y });
   });
 
-  return commands.length > 1 ? commands.join(" ") : null;
+  if (points.length === 0) return null;
+
+  const [firstPoint] = points;
+  const lastPoint = points[points.length - 1];
+  const commands = [`M 0 ${firstPoint.y}`, `L ${firstPoint.x} ${firstPoint.y}`];
+
+  for (let index = 1; index < points.length; index += 1) {
+    const point = points[index];
+    commands.push(`L ${point.x} ${point.y}`);
+  }
+
+  commands.push(`L ${plotWidth} ${lastPoint.y}`);
+  return commands.join(" ");
 }
 
 export default function UsageHistoryClient() {
@@ -342,7 +357,15 @@ function UsageChart({
   const barMetrics = getBarMetrics(data.length);
   const labelStep = getXAxisLabelStep(data.length);
   const chartWidth = data.length * barMetrics.width + Math.max(0, data.length - 1) * barMetrics.gap;
-  const limitPath = buildLimitPath(data, axisMax, barMetrics.width, barMetrics.gap, CHART_HEIGHT);
+  const plotWidth = Math.max(chartWidth, 640);
+  const limitPath = buildLimitPath(
+    data,
+    axisMax,
+    barMetrics.width,
+    barMetrics.gap,
+    CHART_HEIGHT,
+    plotWidth,
+  );
 
   return (
     <div className="mt-8 grid grid-cols-[3rem_1fr] gap-4">
@@ -365,7 +388,7 @@ function UsageChart({
       <div className="overflow-x-auto pb-2">
         <div
           className="relative"
-          style={{ width: `${Math.max(chartWidth, 640)}px`, height: `${CHART_HEIGHT + LABEL_HEIGHT}px` }}
+          style={{ width: `${plotWidth}px`, height: `${CHART_HEIGHT + LABEL_HEIGHT}px` }}
         >
           <div
             className="absolute inset-x-0 top-0 rounded-2xl border border-gray-800 bg-gray-950/60"
@@ -382,9 +405,9 @@ function UsageChart({
             {limitPath && (
               <svg
                 className="pointer-events-none absolute inset-0"
-                width={Math.max(chartWidth, 640)}
+                width={plotWidth}
                 height={CHART_HEIGHT}
-                viewBox={`0 0 ${Math.max(chartWidth, 640)} ${CHART_HEIGHT}`}
+                viewBox={`0 0 ${plotWidth} ${CHART_HEIGHT}`}
                 preserveAspectRatio="none"
               >
                 <path
@@ -399,15 +422,31 @@ function UsageChart({
             )}
           </div>
 
+          {hoveredSegment && (
+            <div
+              className="pointer-events-none absolute z-20 w-max max-w-40 rounded-xl border border-white/10 bg-gray-950/95 px-3 py-2 text-left shadow-2xl shadow-black/40"
+              style={{
+                left: `${Math.min(hoveredSegment.x + barMetrics.width + 10, Math.max(8, plotWidth - 172))}px`,
+                top: `${Math.min(Math.max(8, hoveredSegment.top), CHART_HEIGHT - 52)}px`,
+              }}
+            >
+              <div className="text-xs font-medium text-white">{hoveredSegment.label}</div>
+              <div className="mt-1 text-xs text-gray-300">
+                {formatDurationCompact(hoveredSegment.seconds)}
+              </div>
+            </div>
+          )}
+
           <div
             className="absolute left-0 top-0 flex items-end"
             style={{ gap: `${barMetrics.gap}px`, height: `${CHART_HEIGHT}px` }}
           >
-            {data.map((day) => {
+            {data.map((day, index) => {
               const chartSegments = getChartSegments(day);
               const isToday = day.date === todayKey;
               const isSelected = day.date === selectedDate;
-              const showTooltip = hoveredSegment?.dayDate === day.date;
+              const dayHeight = (day.usageSeconds / axisMax) * CHART_HEIGHT;
+              let cumulativeSeconds = day.usageSeconds;
 
               return (
                 <button
@@ -417,15 +456,6 @@ function UsageChart({
                   style={{ width: `${barMetrics.width}px` }}
                   aria-label={`${formatDay(day.date)}: ${formatDurationCompact(day.usageSeconds)}`}
                 >
-                  {showTooltip && hoveredSegment && (
-                    <div className="pointer-events-none absolute left-1/2 top-3 z-20 w-max max-w-40 -translate-x-1/2 rounded-xl border border-white/10 bg-gray-950/95 px-3 py-2 text-left shadow-2xl shadow-black/40">
-                      <div className="text-xs font-medium text-white">{hoveredSegment.label}</div>
-                      <div className="mt-1 text-xs text-gray-300">
-                        {formatDurationCompact(hoveredSegment.seconds)}
-                      </div>
-                    </div>
-                  )}
-
                   <div className="absolute inset-x-0 bottom-0 top-0 flex items-end">
                     {day.usageSeconds > 0 ? (
                       <div
@@ -442,17 +472,21 @@ function UsageChart({
                           {chartSegments.map((segment) => {
                             const isHovered = hoveredSegment?.key === segment.key;
                             const isMuted = hoveredSegment != null && !isHovered;
+                            const segmentTop =
+                              CHART_HEIGHT - (cumulativeSeconds / day.usageSeconds) * dayHeight;
+                            cumulativeSeconds -= segment.seconds;
 
                             return (
                               <div
                                 key={segment.key}
-                                title={`${segment.label}: ${formatDurationCompact(segment.seconds)}`}
                                 onMouseEnter={() =>
                                   setHoveredSegment({
                                     key: segment.key,
                                     dayDate: day.date,
                                     label: segment.label,
                                     seconds: segment.seconds,
+                                    x: index * (barMetrics.width + barMetrics.gap),
+                                    top: segmentTop,
                                   })
                                 }
                                 onMouseLeave={() =>
