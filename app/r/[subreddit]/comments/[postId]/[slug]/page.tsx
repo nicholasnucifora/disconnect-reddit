@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Comment from "@/components/Comment";
 import RedditMarkdown from "@/components/RedditMarkdown";
 import { CommentOrMore, countLoadedComments, RedditPost } from "@/lib/reddit";
@@ -40,6 +40,7 @@ export default function PostPage() {
   const params = useParams();
   const router = useRouter();
   const { isSaved, toggle } = useSavedPosts();
+  const galleryRubberbandTimeoutRef = useRef<number | null>(null);
   const subreddit = params.subreddit as string;
   const postId = params.postId as string;
   const slug = params.slug as string;
@@ -59,11 +60,12 @@ export default function PostPage() {
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [galleryTouchStartX, setGalleryTouchStartX] = useState<number | null>(null);
   const [galleryTouchDeltaX, setGalleryTouchDeltaX] = useState(0);
+  const [galleryRubberbandOffset, setGalleryRubberbandOffset] = useState(0);
   const loadedCommentCount = countLoadedComments(comments);
   const displayedCommentCount = post
     ? Math.max(post.numComments, loadedCommentCount)
     : loadedCommentCount;
-  const galleryTranslate = `calc(${-galleryIndex * 100}% + ${galleryTouchDeltaX}px)`;
+  const galleryTranslate = `calc(${-galleryIndex * 100}% + ${galleryTouchDeltaX + galleryRubberbandOffset}px)`;
 
   useEffect(() => {
     async function load() {
@@ -112,6 +114,14 @@ export default function PostPage() {
     load();
   }, [subreddit, postId, slug]);
 
+  useEffect(() => {
+    return () => {
+      if (galleryRubberbandTimeoutRef.current !== null) {
+        window.clearTimeout(galleryRubberbandTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const saved = post ? isSaved(post.id) : false;
 
   function handleToggleSaved() {
@@ -145,26 +155,58 @@ export default function PostPage() {
     router.push("/");
   }
 
+  function triggerGalleryRubberband(direction: "start" | "end") {
+    if (!post?.isGallery || post.galleryImages.length < 2) return;
+    if (galleryRubberbandTimeoutRef.current !== null) {
+      window.clearTimeout(galleryRubberbandTimeoutRef.current);
+    }
+    setGalleryRubberbandOffset(direction === "start" ? 18 : -18);
+    galleryRubberbandTimeoutRef.current = window.setTimeout(() => {
+      setGalleryRubberbandOffset(0);
+      galleryRubberbandTimeoutRef.current = null;
+    }, 160);
+  }
+
   function handleGalleryTouchStart(event: React.TouchEvent<HTMLElement>) {
     if (!post?.isGallery || post.galleryImages.length < 2) return;
+    if (galleryRubberbandTimeoutRef.current !== null) {
+      window.clearTimeout(galleryRubberbandTimeoutRef.current);
+      galleryRubberbandTimeoutRef.current = null;
+    }
     setGalleryTouchStartX(event.touches[0]?.clientX ?? null);
     setGalleryTouchDeltaX(0);
+    setGalleryRubberbandOffset(0);
   }
 
   function handleGalleryTouchMove(event: React.TouchEvent<HTMLElement>) {
     if (galleryTouchStartX === null || !post?.isGallery || post.galleryImages.length < 2) return;
     const currentX = event.touches[0]?.clientX ?? galleryTouchStartX;
-    setGalleryTouchDeltaX(currentX - galleryTouchStartX);
+    const deltaX = currentX - galleryTouchStartX;
+    const isPullingPastStart = galleryIndex === 0 && deltaX > 0;
+    const isPullingPastEnd = galleryIndex === post.galleryImages.length - 1 && deltaX < 0;
+    setGalleryTouchDeltaX(
+      isPullingPastStart || isPullingPastEnd ? Math.round(deltaX * 0.18) : deltaX
+    );
   }
 
   function handleGalleryTouchEnd() {
     if (galleryTouchStartX === null || !post?.isGallery || post.galleryImages.length < 2) return;
     if (galleryTouchDeltaX <= -40) {
-      setGalleryIndex((index) => (index + 1) % post.galleryImages.length);
+      setGalleryIndex((index) => {
+        if (index === post.galleryImages.length - 1) {
+          triggerGalleryRubberband("end");
+          return index;
+        }
+        return index + 1;
+      });
     } else if (galleryTouchDeltaX >= 40) {
-      setGalleryIndex(
-        (index) => (index - 1 + post.galleryImages.length) % post.galleryImages.length
-      );
+      setGalleryIndex((index) => {
+        if (index === 0) {
+          triggerGalleryRubberband("start");
+          return index;
+        }
+        return index - 1;
+      });
     }
     setGalleryTouchStartX(null);
     setGalleryTouchDeltaX(0);
@@ -279,10 +321,13 @@ export default function PostPage() {
                     <>
                       <button
                         onClick={() =>
-                          setGalleryIndex(
-                            (index) =>
-                              (index - 1 + post.galleryImages.length) % post.galleryImages.length
-                          )
+                          setGalleryIndex((index) => {
+                            if (index === 0) {
+                              triggerGalleryRubberband("start");
+                              return index;
+                            }
+                            return index - 1;
+                          })
                         }
                         className="absolute left-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80 md:flex"
                         aria-label="Previous image"
@@ -291,7 +336,13 @@ export default function PostPage() {
                       </button>
                       <button
                         onClick={() =>
-                          setGalleryIndex((index) => (index + 1) % post.galleryImages.length)
+                          setGalleryIndex((index) => {
+                            if (index === post.galleryImages.length - 1) {
+                              triggerGalleryRubberband("end");
+                              return index;
+                            }
+                            return index + 1;
+                          })
                         }
                         className="absolute right-2 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/55 text-xl text-white transition-colors hover:bg-black/80 md:flex"
                         aria-label="Next image"

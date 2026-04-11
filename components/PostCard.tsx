@@ -33,6 +33,7 @@ interface PostCardProps {
 export default function PostCard({ post, onDismiss }: PostCardProps) {
   const router = useRouter();
   const articleRef = useRef<HTMLElement | null>(null);
+  const galleryRubberbandTimeoutRef = useRef<number | null>(null);
   const swipeOffsetRef = useRef(0);
   const cardTouchStartXRef = useRef<number | null>(null);
   const cardTouchStartYRef = useRef<number | null>(null);
@@ -44,6 +45,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const [resolvedNumComments, setResolvedNumComments] = useState(post.numComments);
   const [galleryTouchStartX, setGalleryTouchStartX] = useState<number | null>(null);
   const [galleryTouchDeltaX, setGalleryTouchDeltaX] = useState(0);
+  const [galleryRubberbandOffset, setGalleryRubberbandOffset] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swipeDragging, setSwipeDragging] = useState(false);
   const [cardAction, setCardAction] = useState<"none" | "save" | "dismiss">("none");
@@ -74,6 +76,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
       // storage unavailable
     }
   }, [router, detailUrl, post]);
+
+  useEffect(() => {
+    return () => {
+      if (galleryRubberbandTimeoutRef.current !== null) {
+        window.clearTimeout(galleryRubberbandTimeoutRef.current);
+      }
+    };
+  }, []);
 
   function updateSwipeVisual(offset: number) {
     swipeOffsetRef.current = offset;
@@ -126,36 +136,82 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     : [];
   const hasThumbnail = !showLargeMedia && !!post.thumbnail;
   const isMultiImageGallery = images.length > 1;
-  const galleryTranslate = `calc(${-imgIndex * 100}% + ${galleryTouchDeltaX}px)`;
+  const galleryTranslate = `calc(${-imgIndex * 100}% + ${galleryTouchDeltaX + galleryRubberbandOffset}px)`;
+
+  function triggerGalleryRubberband(direction: "start" | "end") {
+    if (!isMultiImageGallery) return;
+    if (galleryRubberbandTimeoutRef.current !== null) {
+      window.clearTimeout(galleryRubberbandTimeoutRef.current);
+    }
+    setGalleryRubberbandOffset(direction === "start" ? 18 : -18);
+    galleryRubberbandTimeoutRef.current = window.setTimeout(() => {
+      setGalleryRubberbandOffset(0);
+      galleryRubberbandTimeoutRef.current = null;
+    }, 160);
+  }
 
   function prevImg(e: React.MouseEvent) {
     e.stopPropagation();
-    setImgIndex((index) => (index - 1 + images.length) % images.length);
+    setImgIndex((index) => {
+      if (index === 0) {
+        triggerGalleryRubberband("start");
+        return index;
+      }
+      return index - 1;
+    });
   }
 
   function nextImg(e: React.MouseEvent) {
     e.stopPropagation();
-    setImgIndex((index) => (index + 1) % images.length);
+    setImgIndex((index) => {
+      if (index === images.length - 1) {
+        triggerGalleryRubberband("end");
+        return index;
+      }
+      return index + 1;
+    });
   }
 
   function handleGalleryTouchStart(event: React.TouchEvent<HTMLElement>) {
     if (!isMultiImageGallery) return;
+    if (galleryRubberbandTimeoutRef.current !== null) {
+      window.clearTimeout(galleryRubberbandTimeoutRef.current);
+      galleryRubberbandTimeoutRef.current = null;
+    }
     setGalleryTouchStartX(event.touches[0]?.clientX ?? null);
     setGalleryTouchDeltaX(0);
+    setGalleryRubberbandOffset(0);
   }
 
   function handleGalleryTouchMove(event: React.TouchEvent<HTMLElement>) {
     if (galleryTouchStartX === null || !isMultiImageGallery) return;
     const currentX = event.touches[0]?.clientX ?? galleryTouchStartX;
-    setGalleryTouchDeltaX(currentX - galleryTouchStartX);
+    const deltaX = currentX - galleryTouchStartX;
+    const isPullingPastStart = imgIndex === 0 && deltaX > 0;
+    const isPullingPastEnd = imgIndex === images.length - 1 && deltaX < 0;
+    setGalleryTouchDeltaX(
+      isPullingPastStart || isPullingPastEnd ? Math.round(deltaX * 0.18) : deltaX
+    );
   }
 
   function handleGalleryTouchEnd() {
     if (galleryTouchStartX === null || !isMultiImageGallery) return;
     if (galleryTouchDeltaX <= -40) {
-      setImgIndex((index) => (index + 1) % images.length);
+      setImgIndex((index) => {
+        if (index === images.length - 1) {
+          triggerGalleryRubberband("end");
+          return index;
+        }
+        return index + 1;
+      });
     } else if (galleryTouchDeltaX >= 40) {
-      setImgIndex((index) => (index - 1 + images.length) % images.length);
+      setImgIndex((index) => {
+        if (index === 0) {
+          triggerGalleryRubberband("start");
+          return index;
+        }
+        return index - 1;
+      });
     }
     setGalleryTouchStartX(null);
     setGalleryTouchDeltaX(0);
