@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CommentOrMore, RedditComment, RedditMoreComments } from "@/lib/reddit";
 import { usernameColor } from "@/lib/utils";
 import RedditMarkdown from "@/components/RedditMarkdown";
+
+const MOBILE_COMMENT_MEDIA_QUERY = "(max-width: 767px)";
+const COMMENT_TAP_MAX_DURATION_MS = 250;
+const COMMENT_TAP_MAX_MOVEMENT_PX = 10;
+const COMMENT_BODY_INTERACTIVE_SELECTOR =
+  "a, button, input, textarea, select, summary, label, [data-comment-no-collapse='true']";
 
 function timeAgo(utcSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - utcSeconds;
@@ -27,6 +33,33 @@ interface CommentProps {
   comment: CommentOrMore;
   subreddit: string;
   postId: string;
+}
+
+interface CommentBodyTapState {
+  pointerId: number;
+  startedAt: number;
+  startX: number;
+  startY: number;
+}
+
+function isMobileTouchPointer(event: React.PointerEvent<HTMLDivElement>): boolean {
+  if (event.pointerType !== "touch" || typeof window === "undefined") {
+    return false;
+  }
+
+  return window.matchMedia(MOBILE_COMMENT_MEDIA_QUERY).matches;
+}
+
+function shouldSkipBodyCollapse(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(COMMENT_BODY_INTERACTIVE_SELECTOR) !== null;
+}
+
+function hasActiveTextSelection(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return (window.getSelection()?.toString().trim().length ?? 0) > 0;
 }
 
 function MoreStub({
@@ -89,6 +122,7 @@ function RegularComment({
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [replies, setReplies] = useState<CommentOrMore[]>(comment.replies);
+  const commentBodyTapStateRef = useRef<CommentBodyTapState | null>(null);
 
   function handleMoreLoaded(index: number, loaded: CommentOrMore[]) {
     setReplies((prev) => {
@@ -100,6 +134,58 @@ function RegularComment({
 
   const descendantCount = countDescendants(replies);
   const nameColor = usernameColor(comment.author);
+
+  function handleCommentBodyPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    if (!isMobileTouchPointer(event) || shouldSkipBodyCollapse(event.target)) {
+      commentBodyTapStateRef.current = null;
+      return;
+    }
+
+    commentBodyTapStateRef.current = {
+      pointerId: event.pointerId,
+      startedAt: Date.now(),
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+  }
+
+  function handleCommentBodyPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const tapState = commentBodyTapStateRef.current;
+
+    if (!tapState || tapState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    const movedX = Math.abs(event.clientX - tapState.startX);
+    const movedY = Math.abs(event.clientY - tapState.startY);
+
+    if (movedX > COMMENT_TAP_MAX_MOVEMENT_PX || movedY > COMMENT_TAP_MAX_MOVEMENT_PX) {
+      commentBodyTapStateRef.current = null;
+    }
+  }
+
+  function handleCommentBodyPointerCancel() {
+    commentBodyTapStateRef.current = null;
+  }
+
+  function handleCommentBodyPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    const tapState = commentBodyTapStateRef.current;
+    commentBodyTapStateRef.current = null;
+
+    if (!tapState || tapState.pointerId !== event.pointerId) {
+      return;
+    }
+
+    if (shouldSkipBodyCollapse(event.target) || hasActiveTextSelection()) {
+      return;
+    }
+
+    if (Date.now() - tapState.startedAt > COMMENT_TAP_MAX_DURATION_MS) {
+      return;
+    }
+
+    setCollapsed((current) => !current);
+  }
 
   return (
     <div className="flex gap-0">
@@ -136,13 +222,21 @@ function RegularComment({
 
         {!collapsed && (
           <>
-            <RedditMarkdown className="text-base text-gray-200 leading-relaxed prose prose-invert max-w-none
-              prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
-              prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
-              prose-strong:text-gray-100 prose-em:text-gray-300
-              mb-3">
-              {comment.body}
-            </RedditMarkdown>
+            <div
+              className="select-text"
+              onPointerDown={handleCommentBodyPointerDown}
+              onPointerMove={handleCommentBodyPointerMove}
+              onPointerCancel={handleCommentBodyPointerCancel}
+              onPointerUp={handleCommentBodyPointerUp}
+            >
+              <RedditMarkdown className="text-base text-gray-200 leading-relaxed prose prose-invert max-w-none
+                prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
+                prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
+                prose-strong:text-gray-100 prose-em:text-gray-300
+                mb-3">
+                {comment.body}
+              </RedditMarkdown>
+            </div>
 
             {replies.length > 0 && (
               <div className="mt-3 space-y-4">

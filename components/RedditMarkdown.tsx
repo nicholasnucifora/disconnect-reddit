@@ -42,6 +42,7 @@ function SpoilerText({ text }: { text: string }) {
   const [revealed, setRevealed] = useState(false);
   return (
     <span
+      data-comment-no-collapse="true"
       onClick={() => setRevealed((r) => !r)}
       title={revealed ? "Click to hide" : "Click to reveal spoiler"}
       className={`cursor-pointer rounded px-0.5 transition-colors ${
