@@ -11,6 +11,39 @@ interface SidebarProps {
   onClose?: () => void;
 }
 
+function StarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 3.75l2.547 5.162 5.698.828-4.123 4.018.973 5.675L12 16.753l-5.095 2.68.973-5.675-4.123-4.018 5.698-.828L12 3.75z"
+      />
+    </svg>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+      <circle cx="12" cy="12" r="8.25" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.75v4.75l3.25 1.75" />
+    </svg>
+  );
+}
+
+function CogIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4" aria-hidden="true">
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 8.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zm8.25 3.25l-1.83-.62a6.72 6.72 0 00-.57-1.39l.84-1.75-1.98-1.98-1.75.84c-.44-.24-.9-.43-1.39-.57L12.75 3.75h-2.5l-.62 1.83c-.49.14-.95.33-1.39.57l-1.75-.84-1.98 1.98.84 1.75c-.24.44-.43.9-.57 1.39l-1.83.62v2.5l1.83.62c.14.49.33.95.57 1.39l-.84 1.75 1.98 1.98 1.75-.84c.44.24.9.43 1.39.57l.62 1.83h2.5l.62-1.83c.49-.14.95-.33 1.39-.57l1.75.84 1.98-1.98-.84-1.75c.24-.44.43-.9.57-1.39l1.83-.62v-2.5z"
+      />
+    </svg>
+  );
+}
+
 export default function Sidebar({ open = false, onClose }: SidebarProps) {
   const router = useRouter();
   const { subreddits, addSubreddit, removeSubreddit } = useSubreddits();
@@ -139,7 +172,9 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
               : "text-gray-300 hover:bg-gray-900 hover:text-white"
           }`}
         >
-          <span className="text-base leading-none">Save</span>
+          <span className="text-base leading-none" aria-hidden="true">
+            <StarIcon />
+          </span>
           <span>Saved Posts</span>
         </Link>
         <Link
@@ -150,7 +185,9 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
               : "text-gray-300 hover:bg-gray-900 hover:text-white"
           }`}
         >
-          <span className="text-base leading-none">Watch</span>
+          <span className="text-base leading-none" aria-hidden="true">
+            <ClockIcon />
+          </span>
           <span>Watch Time</span>
         </Link>
         <Link
@@ -161,7 +198,9 @@ export default function Sidebar({ open = false, onClose }: SidebarProps) {
               : "text-gray-300 hover:bg-gray-900 hover:text-white"
           }`}
         >
-          <span className="text-base leading-none">Set</span>
+          <span className="text-base leading-none" aria-hidden="true">
+            <CogIcon />
+          </span>
           <span>Settings</span>
         </Link>
 
