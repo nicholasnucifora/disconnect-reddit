@@ -582,6 +582,8 @@ export async function getUsageHistory(
   });
 
   const totalSeconds = chart.reduce((sum, day) => sum + day.usageSeconds, 0);
+  const completedDays = chart.filter((day) => day.date !== todayKey);
+  const averageDays = completedDays.filter((day) => day.usageSeconds > 0);
   const activeDays = chart.filter((day) => day.usageSeconds > 0).length;
 
   return {
@@ -591,7 +593,12 @@ export async function getUsageHistory(
     stats: {
       totalSeconds,
       activeDays,
-      averageSeconds: activeDays > 0 ? Math.round(totalSeconds / activeDays) : 0,
+      averageSeconds:
+        averageDays.length > 0
+          ? Math.round(
+              averageDays.reduce((sum, day) => sum + day.usageSeconds, 0) / averageDays.length,
+            )
+          : 0,
     },
     today: buildStatusPayload(settings, schedules, now),
     chart,
