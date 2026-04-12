@@ -53,6 +53,14 @@ function requireData<T>(result: { data: T | null; error: { message: string } | n
   return result.data as T;
 }
 
+function isMissingColumnError(
+  error: { message: string } | null,
+  table: string,
+  column: string,
+) {
+  return !!error?.message && error.message.includes(`column ${table}.${column} does not exist`);
+}
+
 function ensureDailyLimit(value: number | null | undefined): number {
   return value == null || value <= 0 ? DEFAULT_DAILY_LIMIT_SECONDS : value;
 }
@@ -261,7 +269,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
 
 async function getSchedules(): Promise<UsageScheduleWithWindows[]> {
   const supabase = createClient();
-  const [schedulesResult, windowsResult] = await Promise.all([
+  const [rawSchedulesResult, windowsResult] = await Promise.all([
     supabase
       .from("usage_schedules")
       .select("id, username, name, days, all_day, banned, daily_allowance_seconds, daily_open_limit, priority, created_at")
@@ -270,6 +278,13 @@ async function getSchedules(): Promise<UsageScheduleWithWindows[]> {
       .from("usage_schedule_windows")
       .select("id, schedule_id, start_time, end_time"),
   ]);
+  const schedulesResult =
+    isMissingColumnError(rawSchedulesResult.error, "usage_schedules", "daily_open_limit")
+      ? await supabase
+          .from("usage_schedules")
+          .select("id, username, name, days, all_day, banned, daily_allowance_seconds, priority, created_at")
+          .eq("username", USERNAME)
+      : rawSchedulesResult;
   const schedulesData = requireData(schedulesResult, "load usage_schedules");
   const windowsData = requireData(windowsResult, "load usage_schedule_windows");
 
@@ -284,6 +299,9 @@ async function getSchedules(): Promise<UsageScheduleWithWindows[]> {
     .map((schedule) => ({
       ...schedule,
       days: Array.isArray(schedule.days) ? schedule.days : [],
+      daily_open_limit: ensureDailyOpenLimit(
+        (schedule as UsageScheduleRow & { daily_open_limit?: number | null }).daily_open_limit,
+      ),
       windows: (windowsBySchedule.get(schedule.id) ?? []).sort((a, b) =>
         a.start_time.localeCompare(b.start_time),
       ),
@@ -349,14 +367,25 @@ export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, no
       daily_open_limit: ensureDailyOpenLimit(schedule.daily_open_limit),
       priority: schedule.priority ?? 0,
     }));
-
-    const insertedSchedules = requireData(
-      await supabase
+    const insertSchedulesResult = await supabase
       .from("usage_schedules")
       .insert(scheduleRows)
-      .select("id"),
-      "insert usage_schedules",
-    );
+      .select("id");
+    const insertedSchedules = isMissingColumnError(
+      insertSchedulesResult.error,
+      "usage_schedules",
+      "daily_open_limit",
+    )
+      ? requireData(
+          await supabase
+            .from("usage_schedules")
+            .insert(
+              scheduleRows.map(({ daily_open_limit: _dailyOpenLimit, ...legacyRow }) => legacyRow),
+            )
+            .select("id"),
+          "insert usage_schedules",
+        )
+      : requireData(insertSchedulesResult, "insert usage_schedules");
 
     const windowsToInsert =
       insertedSchedules.flatMap((inserted, index) =>
