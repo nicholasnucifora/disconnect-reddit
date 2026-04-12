@@ -658,7 +658,7 @@ function UsageChart({
                   key={day.date}
                   type="button"
                   onClick={() => onSelectDate(day.date)}
-                  className="group relative h-full shrink-0"
+                  className="group relative h-full shrink-0 focus:outline-none"
                   style={{ width: `${barMetrics.width}px` }}
                   aria-label={`${formatDay(day.date)}: ${formatMetricValue(chartValue, mode)}`}
                   aria-pressed={isSelected}
@@ -668,9 +668,9 @@ function UsageChart({
                       <div
                         className={`w-full overflow-hidden rounded-t-md transition-all ${
                           isSelected
-                            ? "ring-2 ring-inset ring-teal-400"
+                            ? "group-hover:ring-2 group-hover:ring-inset group-hover:ring-teal-400"
                             : isToday
-                            ? "ring-1 ring-inset ring-teal-400/70"
+                            ? "group-hover:ring-1 group-hover:ring-inset group-hover:ring-teal-400/70"
                             : "group-hover:ring-1 group-hover:ring-inset group-hover:ring-white/20"
                         }`}
                         style={{ height: `${dayHeight}px` }}
