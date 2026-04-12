@@ -14,6 +14,7 @@ import {
 } from "react";
 import { usePathname } from "next/navigation";
 import { useFeeds } from "@/lib/feeds-context";
+import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 import { getCachedUsageStatus, setCachedUsageStatus } from "./usage/cache";
 import { getUsageBrowsingContext, type UsageBrowsingContext } from "./usage/context";
 import { formatDurationCompact } from "./usage/time";
@@ -88,6 +89,7 @@ function getUsageSessionId() {
 export function UsageProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { feeds, activeFeedId, subredditFeedMap } = useFeeds();
+  const isMobileViewport = useIsMobileViewport();
 
   const [status, setStatus] = useState<UsageStatusPayload | null>(null);
   const [ready, setReady] = useState(false);
@@ -110,6 +112,20 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       }),
     [pathname, feeds, activeFeedId, subredditFeedMap],
   );
+
+  const updateShouldTrack = useCallback(() => {
+    const activeStatus = statusRef.current;
+    const activeContext = currentContextRef.current;
+
+    shouldTrackRef.current =
+      !!activeStatus &&
+      !!activeContext &&
+      document.visibilityState === "visible" &&
+      (isMobileViewport || focusedRef.current) &&
+      !activeStatus.isBlockedBySchedule &&
+      !activeStatus.isOpenLimitReached &&
+      !activeStatus.isLimitReached;
+  }, [isMobileViewport]);
 
   const mergeStatus = useCallback((nextStatus: UsageStatusPayload | null) => {
     statusRef.current = nextStatus;
@@ -217,20 +233,27 @@ export function UsageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     currentContextRef.current = currentContext;
-  }, [currentContext]);
+    updateShouldTrack();
+  }, [currentContext, updateShouldTrack]);
 
   useEffect(() => {
     const handleFocus = () => {
       focusedRef.current = true;
+      updateShouldTrack();
     };
     const handleBlur = () => {
       focusedRef.current = false;
+      updateShouldTrack();
       void flushPending(true);
     };
     const handleVisibility = () => {
+      updateShouldTrack();
       if (document.visibilityState !== "visible") void flushPending(true);
     };
-    const handlePageHide = () => void flushPending(true);
+    const handlePageHide = () => {
+      updateShouldTrack();
+      void flushPending(true);
+    };
 
     window.addEventListener("focus", handleFocus);
     window.addEventListener("blur", handleBlur);
@@ -243,18 +266,11 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [flushPending]);
+  }, [flushPending, updateShouldTrack]);
 
   useEffect(() => {
-    shouldTrackRef.current =
-      !!status &&
-      !!currentContext &&
-      document.visibilityState === "visible" &&
-      focusedRef.current &&
-      !status.isBlockedBySchedule &&
-      !status.isOpenLimitReached &&
-      !status.isLimitReached;
-  }, [status, currentContext]);
+    updateShouldTrack();
+  }, [status, currentContext, isMobileViewport, updateShouldTrack]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {

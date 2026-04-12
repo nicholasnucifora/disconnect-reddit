@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { useIsMobileViewport } from "@/lib/use-is-mobile-viewport";
 
 function shouldBypass(pathname: string) {
   return pathname.startsWith("/auth");
@@ -9,6 +10,7 @@ function shouldBypass(pathname: string) {
 
 export default function FocusGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isMobileViewport = useIsMobileViewport();
   const [isFocused, setIsFocused] = useState(true);
   const [isVisible, setIsVisible] = useState(true);
 
@@ -29,7 +31,7 @@ export default function FocusGuard({ children }: { children: React.ReactNode }) 
     };
   }, []);
 
-  const showOverlay = !shouldBypass(pathname) && isVisible && !isFocused;
+  const showOverlay = !isMobileViewport && !shouldBypass(pathname) && isVisible && !isFocused;
 
   useEffect(() => {
     if (!showOverlay) return;
