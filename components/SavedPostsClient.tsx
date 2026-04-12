@@ -20,7 +20,7 @@ export default function SavedPostsClient() {
   return (
     <div className="space-y-4">
       {savedPosts.map((post) => (
-        <PostCard key={post.id} post={post} />
+        <PostCard key={post.id} post={post} view="saved" />
       ))}
     </div>
   );

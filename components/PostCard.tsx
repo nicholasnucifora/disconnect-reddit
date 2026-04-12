@@ -28,9 +28,10 @@ function isDirectImage(url: string, domain: string): boolean {
 interface PostCardProps {
   post: RedditPost;
   onDismiss?: (id: string) => void;
+  view?: "default" | "saved";
 }
 
-export default function PostCard({ post, onDismiss }: PostCardProps) {
+export default function PostCard({ post, onDismiss, view = "default" }: PostCardProps) {
   const router = useRouter();
   const articleRef = useRef<HTMLElement | null>(null);
   const galleryRubberbandTimeoutRef = useRef<number | null>(null);
@@ -48,14 +49,17 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   const [galleryRubberbandOffset, setGalleryRubberbandOffset] = useState(0);
   const [swipeOffset, setSwipeOffset] = useState(0);
   const [swipeDragging, setSwipeDragging] = useState(false);
-  const [cardAction, setCardAction] = useState<"none" | "save" | "dismiss">("none");
 
-  const { isSaved, toggle, unsave } = useSavedPosts();
+  const { isSaved, save, unsave } = useSavedPosts();
   const slug = post.permalink.split("/").filter(Boolean).pop() ?? post.id;
   const detailUrl = `/r/${post.subreddit}/comments/${post.id}/${slug}`;
   const redditUrl = post.permalink
     ? `https://www.reddit.com${post.permalink}`
     : `https://www.reddit.com/r/${post.subreddit}/comments/${post.id}/${slug}/`;
+  const saved = isSaved(post.id);
+  const isSavedView = view === "saved";
+  const canSaveFromHere = !isSavedView && !saved;
+  const canDismiss = isSavedView || Boolean(onDismiss) || saved;
 
   useEffect(() => {
     router.prefetch(detailUrl);
@@ -93,7 +97,6 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   function resetSwipeVisual() {
     updateSwipeVisual(0);
     setSwipeDragging(false);
-    setCardAction("none");
   }
 
   function navigateToPost() {
@@ -123,6 +126,11 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
 
   function handleDismiss() {
     suppressClickUntilRef.current = Date.now() + SWIPE_CLICK_SUPPRESSION_MS;
+    if (isSavedView) {
+      unsave(post.id);
+      return;
+    }
+
     if (onDismiss) {
       void onDismiss(post.id);
       return;
@@ -133,9 +141,22 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     }
   }
 
-  function handleSaveToggle() {
+  function handleSaveAction() {
     suppressClickUntilRef.current = Date.now() + SWIPE_CLICK_SUPPRESSION_MS;
-    toggle(post);
+    if (isSavedView) {
+      unsave(post.id);
+      return;
+    }
+
+    if (saved) {
+      unsave(post.id);
+      return;
+    }
+
+    save(post);
+    if (onDismiss) {
+      void onDismiss(post.id);
+    }
   }
 
   const hasGallery = post.isGallery && post.galleryImages.length > 0;
@@ -263,10 +284,6 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     const maxOffset = Math.max(CARD_SWIPE_TRIGGER, articleWidth / 2 - 44);
     const offset = Math.max(-maxOffset, Math.min(maxOffset, deltaX));
     updateSwipeVisual(offset);
-
-    if (offset > 0) setCardAction("save");
-    else if (offset < 0 && (onDismiss || isSaved(post.id))) setCardAction("dismiss");
-    else setCardAction("none");
   }
 
   function handleCardTouchEnd() {
@@ -288,7 +305,14 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     }
 
     if (finalOffset >= CARD_SWIPE_TRIGGER) {
-      handleSaveToggle();
+      if (isSavedView) {
+        handleDismiss();
+        return;
+      }
+
+      if (canSaveFromHere) {
+        handleSaveAction();
+      }
     }
   }
 
@@ -302,7 +326,7 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
   function handleToggleSaved(e: React.MouseEvent) {
     e.preventDefault();
     e.stopPropagation();
-    handleSaveToggle();
+    handleSaveAction();
   }
 
   function handleDismissClick(e: React.MouseEvent) {
@@ -311,13 +335,13 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     handleDismiss();
   }
 
-  const saved = isSaved(post.id);
-  const canDismiss = Boolean(onDismiss) || saved;
   const swipeDistance = Math.abs(swipeOffset);
   const swipeActivationDistance = Math.max(0, swipeDistance - CARD_SWIPE_NEUTRAL_ZONE);
   const swipeProgress = Math.min(1, swipeActivationDistance / CARD_SWIPE_TRIGGER);
   const activeSwipeAction =
-    swipeOffset > CARD_SWIPE_NEUTRAL_ZONE
+    swipeOffset > CARD_SWIPE_NEUTRAL_ZONE && isSavedView
+      ? "dismiss"
+      : swipeOffset > CARD_SWIPE_NEUTRAL_ZONE && canSaveFromHere
       ? "save"
       : swipeOffset < -CARD_SWIPE_NEUTRAL_ZONE && canDismiss
       ? "dismiss"
@@ -340,20 +364,22 @@ export default function PostCard({ post, onDismiss }: PostCardProps) {
     activeSwipeAction === "save" ? "\u2605" : activeSwipeAction === "dismiss" ? "\u2715" : "";
   const actionButtons = (
     <div className={`${isMultiImageGallery ? "flex" : "hidden"} items-center gap-2 md:flex`}>
-      <button
-        type="button"
-        onClick={handleToggleSaved}
-        data-card-swipe-ignore="true"
-        aria-label={saved ? "Remove from saved posts" : "Save post"}
-        title={saved ? "Saved" : "Save post"}
-        className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-xl transition-colors ${
-          saved
-            ? "border-amber-400/60 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
-            : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
-        }`}
-      >
-        {saved ? "\u2605" : "\u2606"}
-      </button>
+      {!isSavedView && (
+        <button
+          type="button"
+          onClick={handleToggleSaved}
+          data-card-swipe-ignore="true"
+          aria-label={saved ? "Remove from saved posts" : "Save post"}
+          title={saved ? "Saved" : "Save post"}
+          className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full border text-xl transition-colors ${
+            saved
+              ? "border-amber-400/60 bg-amber-400/15 text-amber-300 hover:bg-amber-400/25"
+              : "border-gray-700 bg-gray-800 text-gray-400 hover:border-amber-400/50 hover:text-amber-300"
+          }`}
+        >
+          {saved ? "\u2605" : "\u2606"}
+        </button>
+      )}
       <button
         type="button"
         onClick={handleDismissClick}
