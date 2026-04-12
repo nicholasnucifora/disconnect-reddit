@@ -67,6 +67,32 @@ function withLocalUsageFloor(nextStatus: UsageStatusPayload, localStatus: UsageS
   };
 }
 
+function withOptimisticOpenAttempt(localStatus: UsageStatusPayload | null) {
+  if (!localStatus) return null;
+  if (localStatus.isOpenLimitReached) return localStatus;
+
+  const openLimit = localStatus.dailyOpenLimit;
+
+  if (openLimit != null && localStatus.dailyOpenCount >= openLimit) {
+    return {
+      ...localStatus,
+      isOpenLimitReached: true,
+      restrictionReason: localStatus.isBlockedBySchedule
+        ? ("schedule_blocked" as const)
+        : ("open_limit_reached" as const),
+    };
+  }
+
+  const nextDailyOpenCount = localStatus.dailyOpenCount + 1;
+  const remainingOpens = openLimit == null ? null : Math.max(0, openLimit - nextDailyOpenCount);
+
+  return {
+    ...localStatus,
+    dailyOpenCount: nextDailyOpenCount,
+    remainingOpens,
+  };
+}
+
 function getUsageSessionId() {
   if (typeof window === "undefined") return null;
 
@@ -166,11 +192,15 @@ export function UsageProvider({ children }: { children: ReactNode }) {
     }
   }, [mergeStatus]);
 
-  const registerOpen = useCallback(async (sessionIdOverride?: string) => {
+  const registerOpen = useCallback(async (sessionIdOverride?: string, options?: { optimistic?: boolean }) => {
     const sessionId = sessionIdOverride ?? getUsageSessionId();
     if (!sessionId) {
       await refreshStatus();
       return;
+    }
+
+    if (options?.optimistic) {
+      mergeStatus(withOptimisticOpenAttempt(statusRef.current));
     }
 
     setIsRefreshing(true);
@@ -255,7 +285,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
         statusRef.current?.countFocusReturnAsOpen
       ) {
         hasLostFocusRef.current = false;
-        void registerOpen(getFocusReturnSessionId());
+        void registerOpen(getFocusReturnSessionId(), { optimistic: true });
         return;
       }
 
