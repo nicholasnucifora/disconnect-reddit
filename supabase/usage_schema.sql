@@ -56,6 +56,17 @@ create table if not exists reddit_open_events (
   session_id text not null
 );
 
+create table if not exists usage_settings_history (
+  id bigint generated always as identity primary key,
+  username text not null,
+  effective_date date not null,
+  timezone text not null default 'Australia/Brisbane',
+  daily_limit_seconds integer null,
+  daily_open_limit integer null,
+  schedules jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
 create index if not exists reddit_usage_events_user_date_idx
   on reddit_usage_events (username, usage_date);
 
@@ -64,6 +75,9 @@ create index if not exists reddit_open_events_user_date_idx
 
 create unique index if not exists reddit_open_events_user_date_session_idx
   on reddit_open_events (username, usage_date, session_id);
+
+create unique index if not exists usage_settings_history_user_effective_date_idx
+  on usage_settings_history (username, effective_date);
 
 create index if not exists usage_schedules_username_idx
   on usage_schedules (username);

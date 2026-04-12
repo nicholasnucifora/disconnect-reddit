@@ -13,6 +13,16 @@ export interface UsageSettingsRow {
   daily_reset_at: string;
 }
 
+export interface UsageSettingsHistoryRow {
+  username: string;
+  effective_date: string;
+  timezone: string;
+  daily_limit_seconds: number | null;
+  daily_open_limit: number | null;
+  schedules: unknown;
+  created_at?: string;
+}
+
 export interface UsageScheduleRow {
   id: string;
   username: string;

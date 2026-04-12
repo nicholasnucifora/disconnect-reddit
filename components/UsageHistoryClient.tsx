@@ -222,8 +222,8 @@ function buildLimitPath(
 
 function getChartDescription(mode: ChartMode) {
   return mode === "time"
-    ? "Hover a color band to identify the feed. Small slices still collapse into Other on the chart, and clicking the same day again clears the selection back to the range average below."
-    : "Flip to opens to see how many separate app launches were registered each day. Clicking the same day again clears the selection back to the range average below.";
+    ? "Hover a color band to identify the feed. Small slices still collapse into Other on the chart, and use the button below to jump back to the average breakdown."
+    : "Flip to opens to see how many separate app launches were registered each day. Use the button below to jump back to the average breakdown.";
 }
 
 function getLimitLegendLabel(mode: ChartMode) {
@@ -657,7 +657,7 @@ function UsageChart({
                 <button
                   key={day.date}
                   type="button"
-                  onClick={() => onSelectDate(day.date === selectedDate ? null : day.date)}
+                  onClick={() => onSelectDate(day.date)}
                   className="group relative h-full shrink-0"
                   style={{ width: `${barMetrics.width}px` }}
                   aria-label={`${formatDay(day.date)}: ${formatMetricValue(chartValue, mode)}`}
@@ -835,7 +835,7 @@ function BreakdownPanel({
               : "cursor-default border border-gray-800 bg-gray-950/50 text-gray-500"
           }`}
         >
-          {isSelectedDay ? "Reset" : "Showing average"}
+          {isSelectedDay ? "Show average breakdown" : "Showing average breakdown"}
         </button>
       </div>
 
