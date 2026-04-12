@@ -106,6 +106,12 @@ function sanitizeStoredSchedules(value: unknown): UsageScheduleWithWindows[] {
                   (candidate as { daily_allowance_seconds: unknown }).daily_allowance_seconds,
                 ) || 0,
               ),
+        daily_open_limit:
+          (candidate as { daily_open_limit?: unknown }).daily_open_limit == null
+            ? null
+            : ensureDailyOpenLimit(
+                Number((candidate as { daily_open_limit: unknown }).daily_open_limit) || 0,
+              ),
         priority: Number((candidate as { priority?: unknown }).priority ?? 0),
         created_at:
           typeof (candidate as { created_at?: unknown }).created_at === "string"
@@ -258,7 +264,7 @@ async function getSchedules(): Promise<UsageScheduleWithWindows[]> {
   const [schedulesResult, windowsResult] = await Promise.all([
     supabase
       .from("usage_schedules")
-      .select("id, username, name, days, all_day, banned, daily_allowance_seconds, priority, created_at")
+      .select("id, username, name, days, all_day, banned, daily_allowance_seconds, daily_open_limit, priority, created_at")
       .eq("username", USERNAME),
     supabase
       .from("usage_schedule_windows")
@@ -340,6 +346,7 @@ export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, no
       all_day: schedule.all_day,
       banned: schedule.banned,
       daily_allowance_seconds: schedule.daily_allowance_seconds,
+      daily_open_limit: ensureDailyOpenLimit(schedule.daily_open_limit),
       priority: schedule.priority ?? 0,
     }));
 
@@ -473,13 +480,16 @@ function buildStatusPayload(
   const isBlockedBySchedule = !!currentSchedule && !isWithinWindow;
   const effectiveDailyLimitSeconds =
     currentSchedule?.daily_allowance_seconds ?? ensureDailyLimit(settings.daily_limit_seconds);
+  const effectiveDailyOpenLimit =
+    currentSchedule?.daily_open_limit ?? ensureDailyOpenLimit(settings.daily_open_limit);
   const remainingSeconds =
     effectiveDailyLimitSeconds == null
       ? null
       : Math.max(0, effectiveDailyLimitSeconds - settings.daily_usage_seconds);
-  const dailyOpenLimit = ensureDailyOpenLimit(settings.daily_open_limit);
   const remainingOpens =
-    dailyOpenLimit == null ? null : Math.max(0, dailyOpenLimit - settings.daily_open_count);
+    effectiveDailyOpenLimit == null
+      ? null
+      : Math.max(0, effectiveDailyOpenLimit - settings.daily_open_count);
   const isLimitReached =
     effectiveDailyLimitSeconds != null &&
     remainingSeconds != null &&
@@ -496,7 +506,7 @@ function buildStatusPayload(
     globalDailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
     effectiveDailyLimitSeconds,
     remainingSeconds,
-    dailyOpenLimit,
+    dailyOpenLimit: effectiveDailyOpenLimit,
     remainingOpens,
     dailyResetAt: settings.daily_reset_at,
     isBlockedBySchedule,
@@ -552,8 +562,8 @@ export async function registerDailyOpen(
     return buildStatusPayload(settingsBefore, schedules, now);
   }
 
-  const dailyOpenLimit = ensureDailyOpenLimit(settingsBefore.daily_open_limit);
-  if (dailyOpenLimit != null && settingsBefore.daily_open_count >= dailyOpenLimit) {
+  const statusBefore = buildStatusPayload(settingsBefore, schedules, now);
+  if (statusBefore.dailyOpenLimit != null && settingsBefore.daily_open_count >= statusBefore.dailyOpenLimit) {
     return buildStatusPayload(settingsBefore, schedules, now, { openLimitBlocked: true });
   }
 
@@ -696,6 +706,19 @@ function getLimitForDate(
   const weekday = getZonedParts(date, timeZone).weekday;
   const schedule = getScheduleForWeekday(schedules, weekday);
   return schedule?.daily_allowance_seconds ?? globalLimit ?? null;
+}
+
+function getOpenLimitForDate(
+  dateKey: string,
+  schedules: UsageScheduleWithWindows[],
+  globalOpenLimit: number | null,
+  timeZone: string,
+): number | null {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
+  const weekday = getZonedParts(date, timeZone).weekday;
+  const schedule = getScheduleForWeekday(schedules, weekday);
+  return schedule?.daily_open_limit ?? globalOpenLimit ?? null;
 }
 
 function buildDateRange(
@@ -1041,7 +1064,12 @@ export async function getUsageHistory(
                   snapshot.dailyLimitSeconds,
                   snapshot.timezone,
                 ),
-                openLimit: snapshot.dailyOpenLimit,
+                openLimit: getOpenLimitForDate(
+                  dateKey,
+                  snapshot.schedules,
+                  snapshot.dailyOpenLimit,
+                  snapshot.timezone,
+                ),
                 feedSegments: [],
                 subredditSegments: [],
               } satisfies UsageChartDay;
@@ -1055,7 +1083,12 @@ export async function getUsageHistory(
                 snapshot.dailyLimitSeconds,
                 snapshot.timezone,
               ),
-              openLimit: snapshot.dailyOpenLimit,
+              openLimit: getOpenLimitForDate(
+                dateKey,
+                snapshot.schedules,
+                snapshot.dailyOpenLimit,
+                snapshot.timezone,
+              ),
               feedSegments: existingDay.feedSegments.sort((a, b) => b.seconds - a.seconds),
               subredditSegments: existingDay.subredditSegments.sort((a, b) => b.seconds - a.seconds),
             };

@@ -62,6 +62,7 @@ function makeSchedule(index: number): UsageScheduleWithWindows {
     all_day: false,
     banned: false,
     daily_allowance_seconds: null,
+    daily_open_limit: null,
     priority: index,
     windows: [
       {
@@ -548,7 +549,7 @@ export default function UsageSettingsClient() {
                         </div>
                       </div>
 
-                      <div className="mt-5 grid gap-5 md:grid-cols-2">
+                      <div className="mt-5 grid gap-5 md:grid-cols-3">
                         <label className="block">
                           <span className="text-sm text-gray-400">Mode</span>
                           <select
@@ -582,6 +583,23 @@ export default function UsageSettingsClient() {
                             }
                             className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white focus:border-teal-500 focus:outline-none"
                             placeholder="Blank = use global daily limit"
+                          />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-sm text-gray-400">Override open limit</span>
+                          <input
+                            type="number"
+                            min="1"
+                            value={toCountLimit(schedule.daily_open_limit)}
+                            onChange={(event) =>
+                              updateSchedule(schedule.id, (current) => ({
+                                ...current,
+                                daily_open_limit: fromCountLimit(event.target.value),
+                              }))
+                            }
+                            className="mt-2 w-full rounded-2xl border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white focus:border-teal-500 focus:outline-none"
+                            placeholder="Blank = use global open limit"
                           />
                         </label>
                       </div>

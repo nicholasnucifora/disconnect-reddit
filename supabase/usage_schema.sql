@@ -29,9 +29,13 @@ create table if not exists usage_schedules (
   all_day boolean not null default false,
   banned boolean not null default false,
   daily_allowance_seconds integer null,
+  daily_open_limit integer null,
   priority integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+alter table usage_schedules
+  add column if not exists daily_open_limit integer null;
 
 create table if not exists usage_schedule_windows (
   id uuid primary key default gen_random_uuid(),

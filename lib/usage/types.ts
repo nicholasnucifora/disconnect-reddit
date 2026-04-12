@@ -32,6 +32,7 @@ export interface UsageScheduleRow {
   all_day: boolean;
   banned: boolean;
   daily_allowance_seconds: number | null;
+  daily_open_limit: number | null;
   priority: number | null;
   created_at?: string;
 }

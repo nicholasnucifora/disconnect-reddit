@@ -32,6 +32,17 @@ function sanitizeSchedules(value: unknown): UsageScheduleWithWindows[] {
         (candidate as { daily_allowance_seconds?: unknown }).daily_allowance_seconds == null
           ? null
           : Math.max(0, Number((candidate as { daily_allowance_seconds: unknown }).daily_allowance_seconds) || 0),
+      daily_open_limit:
+        (candidate as { daily_open_limit?: unknown }).daily_open_limit == null
+          ? null
+          : (() => {
+              const parsedDailyOpenLimit = Number(
+                (candidate as { daily_open_limit: unknown }).daily_open_limit,
+              );
+              return Number.isFinite(parsedDailyOpenLimit) && parsedDailyOpenLimit > 0
+                ? Math.floor(parsedDailyOpenLimit)
+                : null;
+            })(),
       priority: Number((candidate as { priority?: unknown }).priority ?? 0),
       windows: windows
         .map((window, windowIndex) => ({
