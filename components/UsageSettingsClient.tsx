@@ -85,6 +85,7 @@ export default function UsageSettingsClient() {
   const [timezone, setTimezone] = useState("Australia/Brisbane");
   const [dailyLimitMinutes, setDailyLimitMinutes] = useState("60");
   const [dailyOpenLimit, setDailyOpenLimit] = useState("");
+  const [countFocusReturnAsOpen, setCountFocusReturnAsOpen] = useState(false);
   const [schedules, setSchedules] = useState<UsageScheduleWithWindows[]>([]);
   const [subredditRules, setSubredditRules] = useState<
     Record<string, { maxPosts: string; minComments: string }>
@@ -103,6 +104,7 @@ export default function UsageSettingsClient() {
         setTimezone(payload.timezone);
         setDailyLimitMinutes(toMinutes(payload.dailyLimitSeconds) || "60");
         setDailyOpenLimit(toCountLimit(payload.dailyOpenLimit));
+        setCountFocusReturnAsOpen(payload.countFocusReturnAsOpen === true);
         setSchedules(payload.schedules);
       } finally {
         if (!ignore) setLoading(false);
@@ -194,6 +196,7 @@ export default function UsageSettingsClient() {
         timezone,
         dailyLimitSeconds: fromMinutes(dailyLimitMinutes) ?? 3600,
         dailyOpenLimit: fromCountLimit(dailyOpenLimit),
+        countFocusReturnAsOpen,
         schedules: schedules.map((schedule, index) => ({
           ...schedule,
           priority: schedules.length - index,
@@ -249,6 +252,7 @@ export default function UsageSettingsClient() {
       setTimezone(saved.timezone);
       setDailyLimitMinutes(toMinutes(saved.dailyLimitSeconds) || "60");
       setDailyOpenLimit(toCountLimit(saved.dailyOpenLimit));
+      setCountFocusReturnAsOpen(saved.countFocusReturnAsOpen === true);
       setSchedules(saved.schedules);
       setSubredditRules(
         Object.fromEntries(
@@ -361,6 +365,30 @@ export default function UsageSettingsClient() {
                   </div>
                   <p className="mt-2 text-xs text-gray-500">Leave blank to avoid blocking new opens.</p>
                 </div>
+              </div>
+
+              <div className="mt-6 rounded-2xl border border-gray-800 bg-gray-950/70 p-4">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={countFocusReturnAsOpen}
+                    onChange={(event) => setCountFocusReturnAsOpen(event.target.checked)}
+                    className="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-950 text-teal-400 focus:ring-teal-500"
+                  />
+                  <div>
+                    <div className="text-sm font-medium text-white">
+                      Count returning to focus as an open
+                    </div>
+                    <p className="mt-1 max-w-3xl text-sm leading-6 text-gray-400">
+                      Off by default. When enabled, every desktop blur-to-focus return counts as a new open,
+                      which gives open limits more leverage for people who keep the site sitting in a tab all day.
+                    </p>
+                    <p className="mt-2 max-w-3xl text-xs leading-5 text-gray-500">
+                      This is less intuitive than normal open counting because clicking away and then back can add
+                      another open even if the tab was never closed.
+                    </p>
+                  </div>
+                </label>
               </div>
             </section>
 

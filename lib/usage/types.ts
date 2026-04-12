@@ -10,6 +10,7 @@ export interface UsageSettingsRow {
   daily_usage_seconds: number;
   daily_open_limit: number | null;
   daily_open_count: number;
+  count_focus_return_as_open: boolean;
   daily_reset_at: string;
 }
 
@@ -89,6 +90,7 @@ export interface UsageStatusPayload {
   timezone: string;
   dailyUsageSeconds: number;
   dailyOpenCount: number;
+  countFocusReturnAsOpen: boolean;
   globalDailyLimitSeconds: number | null;
   effectiveDailyLimitSeconds: number | null;
   remainingSeconds: number | null;
@@ -152,5 +154,6 @@ export interface UsageSettingsPayload {
   timezone: string;
   dailyLimitSeconds: number | null;
   dailyOpenLimit: number | null;
+  countFocusReturnAsOpen: boolean;
   schedules: UsageScheduleWithWindows[];
 }

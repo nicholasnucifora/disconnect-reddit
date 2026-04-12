@@ -182,7 +182,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
   const result = await supabase
     .from("user_usage_settings")
     .select(
-      "username, timezone, daily_limit_seconds, daily_usage_seconds, daily_open_limit, daily_open_count, daily_reset_at",
+      "username, timezone, daily_limit_seconds, daily_usage_seconds, daily_open_limit, daily_open_count, count_focus_return_as_open, daily_reset_at",
     )
     .eq("username", USERNAME)
     .maybeSingle();
@@ -202,6 +202,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
       daily_usage_seconds: 0,
       daily_open_limit: null,
       daily_open_count: 0,
+      count_focus_return_as_open: false,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
     };
     const upsertResult = await supabase.from("user_usage_settings").upsert(initial, { onConflict: "username" });
@@ -219,6 +220,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
       daily_usage_seconds: 0,
       daily_open_limit: ensureDailyOpenLimit(data.daily_open_limit),
       daily_open_count: 0,
+      count_focus_return_as_open: data.count_focus_return_as_open ?? false,
       daily_reset_at: getNextLocalMidnight(now, timezone).toISOString(),
     };
     const updateResult = await supabase
@@ -229,6 +231,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
         daily_usage_seconds: 0,
         daily_open_limit: reset.daily_open_limit,
         daily_open_count: 0,
+        count_focus_return_as_open: reset.count_focus_return_as_open,
         daily_reset_at: reset.daily_reset_at,
       })
       .eq("username", USERNAME);
@@ -245,6 +248,7 @@ async function ensureSettings(now = new Date()): Promise<UsageSettingsRow> {
     daily_usage_seconds: data.daily_usage_seconds ?? 0,
     daily_open_limit: ensureDailyOpenLimit(data.daily_open_limit),
     daily_open_count: data.daily_open_count ?? 0,
+    count_focus_return_as_open: data.count_focus_return_as_open ?? false,
     daily_reset_at: currentResetAt.toISOString(),
   };
 }
@@ -292,6 +296,7 @@ export async function getUsageSettingsPayload(now = new Date()): Promise<UsageSe
     timezone: normalizeTimeZone(settings.timezone),
     dailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
     dailyOpenLimit: ensureDailyOpenLimit(settings.daily_open_limit),
+    countFocusReturnAsOpen: settings.count_focus_return_as_open ?? false,
     schedules,
   };
 }
@@ -313,6 +318,7 @@ export async function saveUsageSettingsPayload(payload: UsageSettingsPayload, no
         daily_usage_seconds: currentSettings.daily_usage_seconds,
         daily_open_limit: ensureDailyOpenLimit(payload.dailyOpenLimit),
         daily_open_count: currentSettings.daily_open_count,
+        count_focus_return_as_open: payload.countFocusReturnAsOpen,
         daily_reset_at: nextResetAt,
       },
       { onConflict: "username" },
@@ -486,6 +492,7 @@ function buildStatusPayload(
     timezone,
     dailyUsageSeconds: settings.daily_usage_seconds,
     dailyOpenCount: settings.daily_open_count,
+    countFocusReturnAsOpen: settings.count_focus_return_as_open ?? false,
     globalDailyLimitSeconds: ensureDailyLimit(settings.daily_limit_seconds),
     effectiveDailyLimitSeconds,
     remainingSeconds,

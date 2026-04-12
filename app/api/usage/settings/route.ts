@@ -80,6 +80,7 @@ export async function POST(request: NextRequest) {
           : Number.isFinite(parsedDailyOpenLimit) && parsedDailyOpenLimit > 0
           ? Math.floor(parsedDailyOpenLimit)
           : null,
+      countFocusReturnAsOpen: body.countFocusReturnAsOpen === true,
       schedules: sanitizeSchedules(body.schedules),
     };
 

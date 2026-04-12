@@ -86,6 +86,14 @@ function getUsageSessionId() {
   }
 }
 
+function getFocusReturnSessionId() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `focus-${crypto.randomUUID()}`;
+  }
+
+  return `focus-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function UsageProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const { feeds, activeFeedId, subredditFeedMap } = useFeeds();
@@ -101,6 +109,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
   const currentContextRef = useRef<UsageBrowsingContext | null>(null);
   const inflightFlushRef = useRef<Promise<void> | null>(null);
   const focusedRef = useRef(true);
+  const hasLostFocusRef = useRef(false);
 
   const currentContext = useMemo(
     () =>
@@ -157,8 +166,8 @@ export function UsageProvider({ children }: { children: ReactNode }) {
     }
   }, [mergeStatus]);
 
-  const registerOpen = useCallback(async () => {
-    const sessionId = getUsageSessionId();
+  const registerOpen = useCallback(async (sessionIdOverride?: string) => {
+    const sessionId = sessionIdOverride ?? getUsageSessionId();
     if (!sessionId) {
       await refreshStatus();
       return;
@@ -240,9 +249,21 @@ export function UsageProvider({ children }: { children: ReactNode }) {
     const handleFocus = () => {
       focusedRef.current = true;
       updateShouldTrack();
+      if (
+        hasLostFocusRef.current &&
+        !isMobileViewport &&
+        statusRef.current?.countFocusReturnAsOpen
+      ) {
+        hasLostFocusRef.current = false;
+        void registerOpen(getFocusReturnSessionId());
+        return;
+      }
+
+      hasLostFocusRef.current = false;
     };
     const handleBlur = () => {
       focusedRef.current = false;
+      hasLostFocusRef.current = true;
       updateShouldTrack();
       void flushPending(true);
     };
@@ -266,7 +287,7 @@ export function UsageProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("pagehide", handlePageHide);
     };
-  }, [flushPending, updateShouldTrack]);
+  }, [flushPending, isMobileViewport, registerOpen, updateShouldTrack]);
 
   useEffect(() => {
     updateShouldTrack();
