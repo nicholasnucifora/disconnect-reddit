@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CommentOrMore, RedditComment, RedditMoreComments } from "@/lib/reddit";
 import { usernameColor } from "@/lib/utils";
 import RedditMarkdown from "@/components/RedditMarkdown";
@@ -8,8 +8,31 @@ import RedditMarkdown from "@/components/RedditMarkdown";
 const MOBILE_COMMENT_MEDIA_QUERY = "(max-width: 767px)";
 const COMMENT_TAP_MAX_DURATION_MS = 250;
 const COMMENT_TAP_MAX_MOVEMENT_PX = 10;
+const COMMENT_COLLAPSE_SELECTION_RELEASE_DELAY_MS = 150;
 const COMMENT_BODY_INTERACTIVE_SELECTOR =
   "a, button, input, textarea, select, summary, label, [data-comment-no-collapse='true']";
+const COMMENT_TAP_SELECTION_SUPPRESSION_CLASS = "comment-tap-selection-suppressed";
+
+let activeCommentSelectionSuppressionCount = 0;
+
+function setCommentSelectionSuppressed(suppressed: boolean) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  if (suppressed) {
+    activeCommentSelectionSuppressionCount += 1;
+    if (activeCommentSelectionSuppressionCount === 1) {
+      document.documentElement.classList.add(COMMENT_TAP_SELECTION_SUPPRESSION_CLASS);
+    }
+    return;
+  }
+
+  activeCommentSelectionSuppressionCount = Math.max(0, activeCommentSelectionSuppressionCount - 1);
+  if (activeCommentSelectionSuppressionCount === 0) {
+    document.documentElement.classList.remove(COMMENT_TAP_SELECTION_SUPPRESSION_CLASS);
+  }
+}
 
 function timeAgo(utcSeconds: number): string {
   const diff = Math.floor(Date.now() / 1000) - utcSeconds;
@@ -123,6 +146,56 @@ function RegularComment({
   const [collapsed, setCollapsed] = useState(false);
   const [replies, setReplies] = useState<CommentOrMore[]>(comment.replies);
   const commentBodyTapStateRef = useRef<CommentBodyTapState | null>(null);
+  const selectionSuppressedRef = useRef(false);
+  const selectionReleaseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearSelectionReleaseTimeout() {
+    if (selectionReleaseTimeoutRef.current !== null) {
+      clearTimeout(selectionReleaseTimeoutRef.current);
+      selectionReleaseTimeoutRef.current = null;
+    }
+  }
+
+  function suppressCommentSelection() {
+    clearSelectionReleaseTimeout();
+
+    if (selectionSuppressedRef.current) {
+      return;
+    }
+
+    selectionSuppressedRef.current = true;
+    setCommentSelectionSuppressed(true);
+  }
+
+  function releaseCommentSelection() {
+    clearSelectionReleaseTimeout();
+
+    if (!selectionSuppressedRef.current) {
+      return;
+    }
+
+    selectionSuppressedRef.current = false;
+    setCommentSelectionSuppressed(false);
+  }
+
+  function scheduleCommentSelectionRelease(delayMs: number) {
+    clearSelectionReleaseTimeout();
+    selectionReleaseTimeoutRef.current = setTimeout(() => {
+      selectionReleaseTimeoutRef.current = null;
+      if (!selectionSuppressedRef.current) {
+        return;
+      }
+
+      selectionSuppressedRef.current = false;
+      setCommentSelectionSuppressed(false);
+    }, delayMs);
+  }
+
+  useEffect(() => {
+    return () => {
+      releaseCommentSelection();
+    };
+  }, []);
 
   function handleMoreLoaded(index: number, loaded: CommentOrMore[]) {
     setReplies((prev) => {
@@ -138,8 +211,12 @@ function RegularComment({
   function handleCommentBodyPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (!isMobileTouchPointer(event) || shouldSkipBodyCollapse(event.target)) {
       commentBodyTapStateRef.current = null;
+      releaseCommentSelection();
       return;
     }
+
+    suppressCommentSelection();
+    scheduleCommentSelectionRelease(COMMENT_TAP_MAX_DURATION_MS);
 
     commentBodyTapStateRef.current = {
       pointerId: event.pointerId,
@@ -161,11 +238,13 @@ function RegularComment({
 
     if (movedX > COMMENT_TAP_MAX_MOVEMENT_PX || movedY > COMMENT_TAP_MAX_MOVEMENT_PX) {
       commentBodyTapStateRef.current = null;
+      releaseCommentSelection();
     }
   }
 
   function handleCommentBodyPointerCancel() {
     commentBodyTapStateRef.current = null;
+    releaseCommentSelection();
   }
 
   function handleCommentBodyPointerUp(event: React.PointerEvent<HTMLDivElement>) {
@@ -173,18 +252,24 @@ function RegularComment({
     commentBodyTapStateRef.current = null;
 
     if (!tapState || tapState.pointerId !== event.pointerId) {
+      releaseCommentSelection();
       return;
     }
 
     if (shouldSkipBodyCollapse(event.target) || hasActiveTextSelection()) {
+      releaseCommentSelection();
       return;
     }
 
     if (Date.now() - tapState.startedAt > COMMENT_TAP_MAX_DURATION_MS) {
+      releaseCommentSelection();
       return;
     }
 
+    event.preventDefault();
+    window.getSelection()?.removeAllRanges();
     setCollapsed((current) => !current);
+    scheduleCommentSelectionRelease(COMMENT_COLLAPSE_SELECTION_RELEASE_DELAY_MS);
   }
 
   return (
