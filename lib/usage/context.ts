@@ -8,6 +8,24 @@ export interface UsageBrowsingContext {
   subreddit?: string | null;
 }
 
+const PAGE_USAGE_CONTEXTS: Array<{
+  prefix: string;
+  context: UsageBrowsingContext;
+}> = [
+  {
+    prefix: "/watch-time",
+    context: { feedId: "watch-time", feedName: "Watch Time", subreddit: null },
+  },
+  {
+    prefix: "/usage",
+    context: { feedId: "watch-time", feedName: "Watch Time", subreddit: null },
+  },
+  {
+    prefix: "/settings",
+    context: { feedId: "settings", feedName: "Settings", subreddit: null },
+  },
+];
+
 function getFeed(feeds: Feed[], feedId: string) {
   return feeds.find((feed) => feed.id === feedId) ?? feeds[0] ?? { id: "home", name: "Home Feed" };
 }
@@ -20,15 +38,12 @@ export function getUsageBrowsingContext(args: {
 }): UsageBrowsingContext | null {
   const { pathname, feeds, activeFeedId, subredditFeedMap } = args;
 
-  if (
-    !pathname ||
-    pathname.startsWith("/auth") ||
-    pathname.startsWith("/usage") ||
-    pathname.startsWith("/watch-time") ||
-    pathname.startsWith("/settings")
-  ) {
+  if (!pathname || pathname.startsWith("/auth")) {
     return null;
   }
+
+  const pageUsageContext = PAGE_USAGE_CONTEXTS.find((entry) => pathname.startsWith(entry.prefix));
+  if (pageUsageContext) return pageUsageContext.context;
 
   if (pathname === "/") {
     const activeFeed = getFeed(feeds, activeFeedId);
