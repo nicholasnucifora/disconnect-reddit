@@ -52,6 +52,12 @@ export interface CommentTree {
   comments: CommentOrMore[];
 }
 
+export interface RedditPostMetrics {
+  postId: string;
+  numComments: number;
+  score: number;
+}
+
 export function countLoadedComments(comments: CommentOrMore[]): number {
   let count = 0;
   for (const comment of comments) {
@@ -69,16 +75,9 @@ const BROWSER_HEADERS = {
   "Accept-Encoding": "gzip, deflate, br",
 };
 
-interface FetchSubredditPostsSearchOptions {
-  afterUtc?: number;
-  beforeUtc?: number;
-  sort?: "asc" | "desc";
-}
-
 // Arctic Shift returns posts as flat objects (no {kind, data} wrapper)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapArchivePost(d: any): RedditPost {
-  // Extract gallery images for is_gallery posts
   let isGallery = false;
   let galleryImages: RedditGalleryImage[] = [];
   if (d.is_gallery && d.gallery_data?.items && d.media_metadata) {
@@ -127,7 +126,7 @@ function mapArchivePost(d: any): RedditPost {
   };
 }
 
-// Uses Arctic Shift — actively maintained Reddit archive, works from Vercel, no auth needed.
+// Uses Arctic Shift - actively maintained Reddit archive, works from Vercel, no auth needed.
 export async function fetchSubredditPosts(
   subreddit: string,
   _sort: "hot" | "top" | "new" = "hot",
@@ -140,7 +139,7 @@ export async function fetchSubredditPosts(
   if (!res.ok) {
     const body = await res.text().catch(() => "");
     throw new Error(
-      `Failed to fetch posts for r/${subreddit}: ${res.status} ${res.statusText} — ${body}`
+      `Failed to fetch posts for r/${subreddit}: ${res.status} ${res.statusText} - ${body}`
     );
   }
 
@@ -182,7 +181,7 @@ export async function fetchSubredditPostsWindow(
     if (!res.ok) {
       const body = await res.text().catch(() => "");
       throw new Error(
-        `Failed to fetch posts for r/${subreddit}: ${res.status} ${res.statusText} â€” ${body}`
+        `Failed to fetch posts for r/${subreddit}: ${res.status} ${res.statusText} - ${body}`
       );
     }
 
@@ -215,35 +214,46 @@ export async function fetchPostComments(
   postId: string,
   _slug: string
 ): Promise<CommentTree> {
-  // Fetch post data and comments in parallel
   const [postRes, commentsRes] = await Promise.all([
-    fetch(
-      `https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`,
-      { headers: BROWSER_HEADERS }
-    ),
-    fetch(
-      `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=100`,
-      { headers: BROWSER_HEADERS }
-    ),
+    fetch(`https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`, {
+      headers: BROWSER_HEADERS,
+    }),
+    fetch(`https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=100`, {
+      headers: BROWSER_HEADERS,
+    }),
   ]);
 
-  // Build post — best effort, fall back to stub if fetch fails
   let post: RedditPost = {
-    id: postId, title: "", author: "", subreddit, score: 0,
-    numComments: 0, url: "", permalink: "", thumbnail: null,
-    selftext: "", isVideo: false, isSelf: false, createdUtc: 0,
-    flair: null, domain: "", stickied: false, isGallery: false, galleryImages: [],
+    id: postId,
+    title: "",
+    author: "",
+    subreddit,
+    score: 0,
+    numComments: 0,
+    url: "",
+    permalink: "",
+    thumbnail: null,
+    selftext: "",
+    isVideo: false,
+    isSelf: false,
+    createdUtc: 0,
+    flair: null,
+    domain: "",
+    stickied: false,
+    isGallery: false,
+    galleryImages: [],
   };
+
   if (postRes.ok) {
     const postJson = await postRes.json();
-    const d = postJson?.data?.[0];
-    if (d) post = mapArchivePost(d);
+    const postData = postJson?.data?.[0];
+    if (postData) post = mapArchivePost(postData);
   }
 
   if (!commentsRes.ok) {
     const body = await commentsRes.text().catch(() => "");
     throw new Error(
-      `Failed to fetch comments for post ${postId}: ${commentsRes.status} ${commentsRes.statusText} — ${body}`
+      `Failed to fetch comments for post ${postId}: ${commentsRes.status} ${commentsRes.statusText} - ${body}`
     );
   }
 
@@ -251,7 +261,6 @@ export async function fetchPostComments(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const flat: any[] = json?.data ?? json?.results ?? [];
 
-  // Build comment tree from flat list using parent_id
   const commentMap = new Map<string, RedditComment>();
   for (const d of flat) {
     commentMap.set(d.id, {
@@ -291,48 +300,72 @@ export async function fetchPostComments(
       }
     }
   }
+
   setDepths(roots, 0);
 
   return { post, comments: roots };
 }
 
-export async function fetchPostCommentCount(postId: string): Promise<number> {
-  const res = await fetch(
-    `https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=100`,
-    { headers: BROWSER_HEADERS }
-  );
+export async function fetchPostMetricsByIds(postIds: string[]): Promise<Map<string, RedditPostMetrics>> {
+  const uniquePostIds = Array.from(new Set(postIds.map((postId) => postId.trim()).filter(Boolean)));
+  if (uniquePostIds.length === 0) return new Map();
 
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Failed to fetch comment count for post ${postId}: ${res.status} ${res.statusText} — ${body}`
-    );
+  const batchSize = 500;
+  const batches: string[][] = [];
+  for (let index = 0; index < uniquePostIds.length; index += batchSize) {
+    batches.push(uniquePostIds.slice(index, index + batchSize));
   }
 
-  const json = await res.json();
-  const comments: unknown[] = json?.data ?? json?.results ?? [];
-  return comments.length;
+  const entries = await Promise.all(
+    batches.map(async (batch) => {
+      const params = new URLSearchParams({
+        ids: batch.join(","),
+        fields: "id,num_comments,score",
+      });
+
+      const res = await fetch(
+        `https://arctic-shift.photon-reddit.com/api/posts/ids?${params.toString()}`,
+        { headers: BROWSER_HEADERS }
+      );
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(
+          `Failed to fetch post metrics for ids ${batch.join(",")}: ${res.status} ${res.statusText} - ${body}`
+        );
+      }
+
+      const json = await res.json();
+      const posts = (json?.data ?? []) as Array<{
+        id?: string;
+        num_comments?: number;
+        score?: number;
+      }>;
+
+      return posts
+        .filter((post): post is { id: string; num_comments?: number; score?: number } => Boolean(post.id))
+        .map((post) => ({
+          postId: post.id,
+          numComments: post.num_comments ?? 0,
+          score: post.score ?? 0,
+        }));
+    })
+  );
+
+  return new Map(entries.flat().map((entry) => [entry.postId, entry] as const));
+}
+
+export async function fetchPostCommentCount(postId: string): Promise<number> {
+  const metrics = await fetchPostMetricsByIds([postId]);
+  return metrics.get(postId)?.numComments ?? 0;
 }
 
 export async function fetchPostScore(postId: string): Promise<number> {
-  const res = await fetch(
-    `https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`,
-    { headers: BROWSER_HEADERS }
-  );
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Failed to fetch score for post ${postId}: ${res.status} ${res.statusText} — ${body}`
-    );
-  }
-
-  const json = await res.json();
-  const post = json?.data?.[0];
-  return post?.score ?? 0;
+  const metrics = await fetchPostMetricsByIds([postId]);
+  return metrics.get(postId)?.score ?? 0;
 }
 
-// Not currently used (legacy "load more" via Reddit direct — kept for reference)
+// Not currently used (legacy "load more" via Reddit direct - kept for reference)
 export async function fetchMoreComments(): Promise<RedditComment[]> {
   return [];
 }

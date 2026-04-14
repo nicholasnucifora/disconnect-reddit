@@ -1,4 +1,4 @@
-import { fetchPostCommentCount, fetchPostScore } from "@/lib/reddit";
+import { fetchPostMetricsByIds } from "@/lib/reddit";
 
 export interface CommentCountTarget {
   postId: string;
@@ -19,21 +19,12 @@ export interface CommentCountRefreshResult {
   failed: FailedCommentCountRefresh[];
 }
 
-async function fetchPostCommentCountWithRetry(postId: string, retries = 1): Promise<number> {
+async function fetchPostMetricsWithRetry(postIds: string[], retries = 1) {
   try {
-    return await fetchPostCommentCount(postId);
+    return await fetchPostMetricsByIds(postIds);
   } catch (error) {
     if (retries <= 0) throw error;
-    return fetchPostCommentCountWithRetry(postId, retries - 1);
-  }
-}
-
-async function fetchPostScoreWithRetry(postId: string, retries = 1): Promise<number> {
-  try {
-    return await fetchPostScore(postId);
-  } catch (error) {
-    if (retries <= 0) throw error;
-    return fetchPostScoreWithRetry(postId, retries - 1);
+    return fetchPostMetricsWithRetry(postIds, retries - 1);
   }
 }
 
@@ -41,38 +32,56 @@ export async function refreshCommentCounts(
   posts: CommentCountTarget[],
   concurrency = 4
 ): Promise<CommentCountRefreshResult> {
+  void concurrency;
+
+  if (posts.length === 0) {
+    return { refreshed: [], failed: [] };
+  }
+
   const refreshed: RefreshedCommentCount[] = [];
   const failed: FailedCommentCountRefresh[] = [];
-  let index = 0;
+  const normalizedPosts = posts.map((post) => ({
+    ...post,
+    normalizedPostId: post.postId.trim(),
+  }));
+  const batchSize = 500;
 
-  await Promise.all(
-    Array.from({ length: Math.min(concurrency, posts.length) }, async () => {
-      while (true) {
-        const currentIndex = index++;
-        if (currentIndex >= posts.length) return;
+  for (let index = 0; index < normalizedPosts.length; index += batchSize) {
+    const batch = normalizedPosts.slice(index, index + batchSize);
+    const batchIds = Array.from(new Set(batch.map((post) => post.normalizedPostId)));
 
-        const post = posts[currentIndex];
-        try {
-          const [numComments, score] = await Promise.all([
-            fetchPostCommentCountWithRetry(post.postId, 1),
-            fetchPostScoreWithRetry(post.postId, 1),
-          ]);
-          refreshed.push({
-            postId: post.postId,
-            subreddit: post.subreddit,
-            numComments,
-            score,
-          });
-        } catch (error) {
+    try {
+      const metricsById = await fetchPostMetricsWithRetry(batchIds, 1);
+
+      for (const post of batch) {
+        const metrics = metricsById.get(post.normalizedPostId);
+        if (!metrics) {
           failed.push({
             postId: post.postId,
             subreddit: post.subreddit,
-            error: error instanceof Error ? error.message : "Unknown error",
+            error: `Post ${post.postId} was missing from Arctic Shift posts/ids response`,
           });
+          continue;
         }
+
+        refreshed.push({
+          postId: post.postId,
+          subreddit: post.subreddit,
+          numComments: metrics.numComments,
+          score: metrics.score,
+        });
       }
-    })
-  );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      for (const post of batch) {
+        failed.push({
+          postId: post.postId,
+          subreddit: post.subreddit,
+          error: message,
+        });
+      }
+    }
+  }
 
   return { refreshed, failed };
 }
