@@ -69,6 +69,12 @@ const BROWSER_HEADERS = {
   "Accept-Encoding": "gzip, deflate, br",
 };
 
+interface FetchSubredditPostsSearchOptions {
+  afterUtc?: number;
+  beforeUtc?: number;
+  sort?: "asc" | "desc";
+}
+
 // Arctic Shift returns posts as flat objects (no {kind, data} wrapper)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapArchivePost(d: any): RedditPost {
@@ -148,6 +154,60 @@ export async function fetchSubredditPosts(
   }
 
   return posts.map(mapArchivePost);
+}
+
+export async function fetchSubredditPostsWindow(
+  subreddit: string,
+  afterUtc: number,
+  beforeUtc: number,
+  pageSize = 100
+): Promise<RedditPost[]> {
+  const collected = new Map<string, RedditPost>();
+  let cursorBefore = beforeUtc;
+
+  while (cursorBefore >= afterUtc) {
+    const params = new URLSearchParams({
+      subreddit,
+      limit: String(pageSize),
+      sort: "desc",
+      after: String(afterUtc),
+      before: String(cursorBefore),
+    });
+
+    const res = await fetch(
+      `https://arctic-shift.photon-reddit.com/api/posts/search?${params.toString()}`,
+      { headers: BROWSER_HEADERS }
+    );
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `Failed to fetch posts for r/${subreddit}: ${res.status} ${res.statusText} â€” ${body}`
+      );
+    }
+
+    const json = await res.json();
+    const posts = ((json?.data ?? []) as unknown[]).map(mapArchivePost);
+
+    if (posts.length === 0) break;
+
+    for (const post of posts) {
+      collected.set(post.id, post);
+    }
+
+    const oldestCreatedUtc = posts.reduce(
+      (oldest, post) => Math.min(oldest, post.createdUtc),
+      posts[0].createdUtc
+    );
+
+    if (posts.length < pageSize || oldestCreatedUtc <= afterUtc) {
+      break;
+    }
+
+    cursorBefore = oldestCreatedUtc - 1;
+  }
+
+  return Array.from(collected.values());
 }
 
 export async function fetchPostComments(

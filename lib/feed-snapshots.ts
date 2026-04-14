@@ -9,13 +9,12 @@ import {
   type FailedCommentCountRefresh,
   refreshCommentCounts,
 } from "@/lib/comment-count-refresh";
-import { fetchSubredditPosts, type RedditPost } from "@/lib/reddit";
+import { fetchSubredditPostsWindow, type RedditPost } from "@/lib/reddit";
 import {
   applySubredditRuleCaps,
   createSubredditRuleMap,
   mapSubredditRuleRow,
   normalizeSubreddit,
-  SUBREDDIT_CANDIDATE_FETCH_LIMIT,
   type SubredditRule,
 } from "@/lib/subreddit-rules";
 import { createClient } from "@/lib/supabase/server";
@@ -141,10 +140,12 @@ async function buildFeedPosts(
 ): Promise<{ posts: RedditPost[]; failedRefreshes: FailedCommentCountRefresh[] }> {
   const subredditRules = await getFeedSubreddits(feedId);
   if (subredditRules.length === 0) return { posts: [], failedRefreshes: [] };
+  const nowUtc = Math.floor(Date.now() / 1000);
+  const threeDaysAgo = nowUtc - 3 * 24 * 60 * 60;
 
   const results = await Promise.allSettled(
     subredditRules.map((rule) =>
-      fetchSubredditPosts(rule.subreddit, "hot", SUBREDDIT_CANDIDATE_FETCH_LIMIT)
+      fetchSubredditPostsWindow(rule.subreddit, threeDaysAgo, nowUtc)
     )
   );
 

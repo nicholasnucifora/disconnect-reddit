@@ -5,13 +5,12 @@ import {
   upsertCommentCounts,
 } from "@/lib/comment-count-cache";
 import { refreshCommentCounts } from "@/lib/comment-count-refresh";
-import { fetchSubredditPosts, RedditPost } from "@/lib/reddit";
+import { fetchSubredditPostsWindow, RedditPost } from "@/lib/reddit";
 import { loadUserSubredditRuleMap } from "@/lib/subreddit-rules-server";
 import {
   applySubredditRuleCaps,
   createDefaultSubredditRule,
   normalizeSubreddit,
-  SUBREDDIT_CANDIDATE_FETCH_LIMIT,
 } from "@/lib/subreddit-rules";
 
 export const runtime = "nodejs";
@@ -42,9 +41,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const subredditRuleMap = await loadUserSubredditRuleMap();
+    const nowUtc = Math.floor(Date.now() / 1000);
+    const threeDaysAgo = nowUtc - 3 * 24 * 60 * 60;
     const results = await Promise.allSettled(
       subreddits.map((subreddit) =>
-        fetchSubredditPosts(subreddit, sort, SUBREDDIT_CANDIDATE_FETCH_LIMIT)
+        fetchSubredditPostsWindow(subreddit, threeDaysAgo, nowUtc)
       )
     );
 
@@ -58,9 +59,6 @@ export async function GET(request: NextRequest) {
         errors.push(`r/${subreddits[i]}: ${result.reason?.message ?? "Unknown error"}`);
       }
     });
-
-    // Keep only posts from the last 3 days
-    const threeDaysAgo = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
 
     // Filter out stickied, deleted, removed, and old posts; sort by comment activity then recency
     const merged = posts
