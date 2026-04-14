@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const REFRESH_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const EXPIRY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const CACHE_READ_BATCH_SIZE = 150;
 
 export interface CachedCommentCount {
   postId: string;
@@ -23,6 +24,10 @@ function isMissingTableError(error: { code?: string; message?: string } | null):
   return error?.code === "42P01" || error?.message?.includes("post_comment_counts") === true;
 }
 
+function isRequestUriTooLargeError(error: { code?: string; message?: string } | null): boolean {
+  return error?.message?.includes("414 Request-URI Too Large") === true;
+}
+
 export function isCommentCountStale(entry: CachedCommentCount): boolean {
   return Date.now() - new Date(entry.checkedAt).getTime() >= REFRESH_INTERVAL_MS;
 }
@@ -32,35 +37,48 @@ export async function getCachedCommentCounts(postIds: string[]): Promise<Map<str
   if (uniquePostIds.length === 0) return new Map();
 
   const supabase = createClient();
-  const { data, error } = await supabase
-    .from("post_comment_counts")
-    .select("post_id, subreddit, num_comments, score, checked_at, expires_at")
-    .in("post_id", uniquePostIds)
-    .gt("expires_at", new Date().toISOString());
+  const entries: Array<readonly [
+    string,
+    CachedCommentCount
+  ]> = [];
+  const expiresAfter = new Date().toISOString();
 
-  if (error) {
-    if (isMissingTableError(error)) return new Map();
-    throw new Error(`Failed to read cached comment counts: ${error.message}`);
+  for (let index = 0; index < uniquePostIds.length; index += CACHE_READ_BATCH_SIZE) {
+    const batch = uniquePostIds.slice(index, index + CACHE_READ_BATCH_SIZE);
+    const { data, error } = await supabase
+      .from("post_comment_counts")
+      .select("post_id, subreddit, num_comments, score, checked_at, expires_at")
+      .in("post_id", batch)
+      .gt("expires_at", expiresAfter);
+
+    if (error) {
+      if (isMissingTableError(error) || isRequestUriTooLargeError(error)) {
+        return new Map();
+      }
+      throw new Error(`Failed to read cached comment counts: ${error.message}`);
+    }
+
+    entries.push(
+      ...(data ?? []).map((row: {
+        post_id: string;
+        subreddit: string;
+        num_comments: number;
+        score?: number;
+        checked_at: string;
+        expires_at: string;
+      }) => [
+        row.post_id,
+        {
+          postId: row.post_id,
+          subreddit: row.subreddit,
+          numComments: row.num_comments,
+          score: row.score ?? 0,
+          checkedAt: row.checked_at,
+          expiresAt: row.expires_at,
+        } satisfies CachedCommentCount,
+      ] as const)
+    );
   }
-
-  const entries = (data ?? []).map((row: {
-    post_id: string;
-    subreddit: string;
-    num_comments: number;
-    score?: number;
-    checked_at: string;
-    expires_at: string;
-  }) => [
-    row.post_id,
-    {
-      postId: row.post_id,
-      subreddit: row.subreddit,
-      numComments: row.num_comments,
-      score: row.score ?? 0,
-      checkedAt: row.checked_at,
-      expiresAt: row.expires_at,
-    } satisfies CachedCommentCount,
-  ] as const);
 
   return new Map(entries);
 }
