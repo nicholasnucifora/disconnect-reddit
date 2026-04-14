@@ -28,6 +28,15 @@ export interface FeedSnapshotResult {
   generatedAt: string;
   source: "snapshot" | "rebuilt";
   failedRefreshes: FailedCommentCountRefresh[];
+  subredditSummaries: Array<{
+    subreddit: string;
+    candidatePosts: number;
+    qualifiedPosts: number;
+  }>;
+  failedFetches: Array<{
+    subreddit: string;
+    error: string;
+  }>;
 }
 
 async function getFeedRows(): Promise<Feed[]> {
@@ -137,9 +146,28 @@ interface BuildFeedPostsOptions {
 async function buildFeedPosts(
   feedId: string,
   options: BuildFeedPostsOptions = {}
-): Promise<{ posts: RedditPost[]; failedRefreshes: FailedCommentCountRefresh[] }> {
+): Promise<{
+  posts: RedditPost[];
+  failedRefreshes: FailedCommentCountRefresh[];
+  subredditSummaries: Array<{
+    subreddit: string;
+    candidatePosts: number;
+    qualifiedPosts: number;
+  }>;
+  failedFetches: Array<{
+    subreddit: string;
+    error: string;
+  }>;
+}> {
   const subredditRules = await getFeedSubreddits(feedId);
-  if (subredditRules.length === 0) return { posts: [], failedRefreshes: [] };
+  if (subredditRules.length === 0) {
+    return {
+      posts: [],
+      failedRefreshes: [],
+      subredditSummaries: [],
+      failedFetches: [],
+    };
+  }
   const nowUtc = Math.floor(Date.now() / 1000);
   const threeDaysAgo = nowUtc - 3 * 24 * 60 * 60;
 
@@ -150,11 +178,21 @@ async function buildFeedPosts(
   );
 
   const posts: RedditPost[] = [];
-  for (const result of results) {
+  const candidateCounts = new Map<string, number>();
+  const failedFetches: Array<{ subreddit: string; error: string }> = [];
+  results.forEach((result, index) => {
+    const subreddit = normalizeSubreddit(subredditRules[index].subreddit);
     if (result.status === "fulfilled") {
       posts.push(...result.value);
+      candidateCounts.set(subreddit, result.value.length);
+      return;
     }
-  }
+    candidateCounts.set(subreddit, 0);
+    failedFetches.push({
+      subreddit,
+      error: result.reason instanceof Error ? result.reason.message : "Unknown error",
+    });
+  });
 
   const subredditRuleMap = createSubredditRuleMap(subredditRules);
   const merged = mergePosts(posts);
@@ -202,10 +240,26 @@ async function buildFeedPosts(
     });
 
   const cappedPosts = applySubredditRuleCaps(hydratedPosts, subredditRuleMap);
+  const qualifiedCounts = new Map<string, number>();
+  for (const post of cappedPosts) {
+    const subreddit = normalizeSubreddit(post.subreddit);
+    qualifiedCounts.set(subreddit, (qualifiedCounts.get(subreddit) ?? 0) + 1);
+  }
+
+  const subredditSummaries = subredditRules.map((rule) => {
+    const subreddit = normalizeSubreddit(rule.subreddit);
+    return {
+      subreddit,
+      candidatePosts: candidateCounts.get(subreddit) ?? 0,
+      qualifiedPosts: qualifiedCounts.get(subreddit) ?? 0,
+    };
+  });
 
   return {
     posts: cappedPosts.slice(0, SNAPSHOT_POST_LIMIT),
     failedRefreshes: refreshResult.failed,
+    subredditSummaries,
+    failedFetches,
   };
 }
 
@@ -242,6 +296,8 @@ export async function readLatestFeedSnapshot(feedId: string): Promise<FeedSnapsh
     generatedAt: snapshot.generated_at,
     source: "snapshot",
     failedRefreshes: [],
+    subredditSummaries: [],
+    failedFetches: [],
   };
 }
 
@@ -253,7 +309,10 @@ export async function buildAndStoreFeedSnapshot(
   feedId: string,
   options: BuildFeedSnapshotOptions = {}
 ): Promise<FeedSnapshotResult> {
-  const { posts, failedRefreshes } = await buildFeedPosts(feedId, options);
+  const { posts, failedRefreshes, subredditSummaries, failedFetches } = await buildFeedPosts(
+    feedId,
+    options
+  );
   const generatedAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + SNAPSHOT_TTL_MS).toISOString();
   const supabase = createClient();
@@ -310,6 +369,8 @@ export async function buildAndStoreFeedSnapshot(
     generatedAt,
     source: "rebuilt",
     failedRefreshes,
+    subredditSummaries,
+    failedFetches,
   };
 }
 

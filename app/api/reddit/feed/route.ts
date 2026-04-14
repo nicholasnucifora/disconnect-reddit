@@ -15,6 +15,8 @@ export async function GET(request: NextRequest) {
         generatedAt: snapshot.generatedAt,
         source: snapshot.source,
         failedRefreshes: snapshot.failedRefreshes,
+        subredditSummaries: snapshot.subredditSummaries,
+        failedFetches: snapshot.failedFetches,
       },
       {
         headers: {

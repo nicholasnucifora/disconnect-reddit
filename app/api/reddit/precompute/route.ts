@@ -68,6 +68,8 @@ export async function POST(request: NextRequest) {
       postCount: snapshot.posts.length,
       posts: snapshot.posts,
       failedRefreshes: snapshot.failedRefreshes,
+      subredditSummaries: snapshot.subredditSummaries,
+      failedFetches: snapshot.failedFetches,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Internal server error";

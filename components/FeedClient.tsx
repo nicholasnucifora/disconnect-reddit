@@ -72,6 +72,12 @@ export default function FeedClient() {
   const [refreshFailures, setRefreshFailures] = useState<
     Array<{ postId: string; subreddit: string; title?: string; error: string }>
   >([]);
+  const [refreshSubredditSummaries, setRefreshSubredditSummaries] = useState<
+    Array<{ subreddit: string; candidatePosts: number; qualifiedPosts: number }>
+  >([]);
+  const [refreshFetchFailures, setRefreshFetchFailures] = useState<
+    Array<{ subreddit: string; error: string }>
+  >([]);
   const [preparedPostCount, setPreparedPostCount] = useState(0);
   const [contentEpoch, setContentEpoch] = useState(0);
 
@@ -122,6 +128,8 @@ export default function FeedClient() {
       feedClearedRef.current = false;
       setFetchErrors([]);
       setRefreshFailures([]);
+      setRefreshSubredditSummaries([]);
+      setRefreshFetchFailures([]);
       setFeedCleared(false);
       setPreparedPostCount(nextPosts.length);
       applyPosts(nextPosts);
@@ -171,10 +179,12 @@ export default function FeedClient() {
     if (cleared) {
       setPosts([]);
       setLoading(false);
-      setFetchErrors([]);
-      setRefreshFailures([]);
-      setPreparedPostCount(0);
-      setContentEpoch((value) => value + 1);
+        setFetchErrors([]);
+        setRefreshFailures([]);
+        setRefreshSubredditSummaries([]);
+        setRefreshFetchFailures([]);
+        setPreparedPostCount(0);
+        setContentEpoch((value) => value + 1);
     }
   }, [activeFeedId]);
 
@@ -195,6 +205,8 @@ export default function FeedClient() {
         setLoading(false);
         setFetchErrors([]);
         setRefreshFailures([]);
+        setRefreshSubredditSummaries([]);
+        setRefreshFetchFailures([]);
         setFeedCleared(true);
         setPreparedPostCount(0);
         return;
@@ -361,6 +373,8 @@ export default function FeedClient() {
     feedClearedRef.current = false;
     setFeedCleared(false);
     setRefreshFailures([]);
+    setRefreshSubredditSummaries([]);
+    setRefreshFetchFailures([]);
     try {
       const res = await fetch("/api/reddit/precompute", {
         method: "POST",
@@ -385,6 +399,12 @@ export default function FeedClient() {
         await fetchPosts({ forceRefresh: true });
       }
       const failedRefreshes = Array.isArray(body.failedRefreshes) ? body.failedRefreshes : [];
+      setRefreshSubredditSummaries(
+        Array.isArray(body.subredditSummaries) ? body.subredditSummaries : []
+      );
+      setRefreshFetchFailures(
+        Array.isArray(body.failedFetches) ? body.failedFetches : []
+      );
       if (failedRefreshes.length > 0) {
         const titleMap = new Map(posts.map((post) => [post.id, post.title] as const));
         setRefreshFailures(
@@ -419,6 +439,8 @@ export default function FeedClient() {
     setLoading(false);
     setFetchErrors([]);
     setRefreshFailures([]);
+    setRefreshSubredditSummaries([]);
+    setRefreshFetchFailures([]);
     setPreparedPostCount(0);
     setFeedCleared(true);
     setContentEpoch((value) => value + 1);
@@ -538,6 +560,24 @@ export default function FeedClient() {
                 r/{failure.subreddit}{" "}
                 {failure.title ? `- ${failure.title}` : `- ${failure.postId}`} ({failure.postId}):
                 {" "}{failure.error}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(refreshSubredditSummaries.length > 0 || refreshFetchFailures.length > 0) && (
+        <div className="rounded-lg border border-sky-800/60 bg-sky-950/30 p-3 text-sm text-sky-100">
+          <p className="font-medium">Refresh breakdown</p>
+          <div className="mt-2 space-y-1 text-xs">
+            {refreshSubredditSummaries.map((summary) => (
+              <p key={summary.subreddit}>
+                r/{summary.subreddit}: {summary.qualifiedPosts} kept from {summary.candidatePosts} candidates
+              </p>
+            ))}
+            {refreshFetchFailures.map((failure) => (
+              <p key={failure.subreddit} className="text-red-200">
+                r/{failure.subreddit}: {failure.error}
               </p>
             ))}
           </div>
