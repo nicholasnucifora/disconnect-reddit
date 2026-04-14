@@ -7,7 +7,12 @@ import {
 import { refreshCommentCounts } from "@/lib/comment-count-refresh";
 import { fetchSubredditPosts, RedditPost } from "@/lib/reddit";
 import { loadUserSubredditRuleMap } from "@/lib/subreddit-rules-server";
-import { createDefaultSubredditRule, normalizeSubreddit } from "@/lib/subreddit-rules";
+import {
+  applySubredditRuleCaps,
+  createDefaultSubredditRule,
+  normalizeSubreddit,
+  SUBREDDIT_CANDIDATE_FETCH_LIMIT,
+} from "@/lib/subreddit-rules";
 
 export const runtime = "nodejs";
 
@@ -38,11 +43,9 @@ export async function GET(request: NextRequest) {
   try {
     const subredditRuleMap = await loadUserSubredditRuleMap();
     const results = await Promise.allSettled(
-      subreddits.map((subreddit) => {
-        const rule =
-          subredditRuleMap.get(normalizeSubreddit(subreddit)) ?? createDefaultSubredditRule(subreddit);
-        return fetchSubredditPosts(subreddit, sort, rule.maxPosts);
-      })
+      subreddits.map((subreddit) =>
+        fetchSubredditPosts(subreddit, sort, SUBREDDIT_CANDIDATE_FETCH_LIMIT)
+      )
     );
 
     const posts: RedditPost[] = [];
@@ -112,16 +115,23 @@ export async function GET(request: NextRequest) {
           numComments: Math.max(post.numComments, cached.numComments),
           score: Math.max(post.score, cached.score),
         };
-      })
-      .filter((post) => {
-        const rule =
-          subredditRuleMap.get(normalizeSubreddit(post.subreddit)) ??
-          createDefaultSubredditRule(post.subreddit);
-        return post.numComments >= rule.minComments;
       });
 
+    const cappedPosts = applySubredditRuleCaps(
+      withCachedCounts,
+      new Map(
+        subreddits.map((subreddit) => {
+          const normalized = normalizeSubreddit(subreddit);
+          return [
+            normalized,
+            subredditRuleMap.get(normalized) ?? createDefaultSubredditRule(subreddit),
+          ] as const;
+        })
+      )
+    );
+
     return NextResponse.json(
-      { posts: withCachedCounts, errors: errors.length > 0 ? errors : undefined },
+      { posts: cappedPosts, errors: errors.length > 0 ? errors : undefined },
       {
         headers: {
           "Cache-Control": "public, s-maxage=300",

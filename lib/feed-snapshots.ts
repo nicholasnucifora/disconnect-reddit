@@ -11,9 +11,11 @@ import {
 } from "@/lib/comment-count-refresh";
 import { fetchSubredditPosts, type RedditPost } from "@/lib/reddit";
 import {
+  applySubredditRuleCaps,
   createSubredditRuleMap,
   mapSubredditRuleRow,
   normalizeSubreddit,
+  SUBREDDIT_CANDIDATE_FETCH_LIMIT,
   type SubredditRule,
 } from "@/lib/subreddit-rules";
 import { createClient } from "@/lib/supabase/server";
@@ -141,7 +143,9 @@ async function buildFeedPosts(
   if (subredditRules.length === 0) return { posts: [], failedRefreshes: [] };
 
   const results = await Promise.allSettled(
-    subredditRules.map((rule) => fetchSubredditPosts(rule.subreddit, "hot", rule.maxPosts))
+    subredditRules.map((rule) =>
+      fetchSubredditPosts(rule.subreddit, "hot", SUBREDDIT_CANDIDATE_FETCH_LIMIT)
+    )
   );
 
   const posts: RedditPost[] = [];
@@ -194,14 +198,12 @@ async function buildFeedPosts(
         numComments,
         score,
       };
-    })
-    .filter((post) => {
-      const rule = subredditRuleMap.get(normalizeSubreddit(post.subreddit));
-      return post.numComments >= (rule?.minComments ?? 0);
     });
 
+  const cappedPosts = applySubredditRuleCaps(hydratedPosts, subredditRuleMap);
+
   return {
-    posts: hydratedPosts.slice(0, SNAPSHOT_POST_LIMIT),
+    posts: cappedPosts.slice(0, SNAPSHOT_POST_LIMIT),
     failedRefreshes: refreshResult.failed,
   };
 }

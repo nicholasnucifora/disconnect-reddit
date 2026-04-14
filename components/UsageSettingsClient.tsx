@@ -427,12 +427,13 @@ export default function UsageSettingsClient() {
                         <div>
                           <p className="text-sm font-medium text-white">r/{subreddit}</p>
                           <p className="mt-1 text-xs text-gray-500">
-                            Higher max-post values fetch more candidates. Higher comment minimums filter more aggressively.
+                            The app scans a larger recent candidate pool, keeps posts meeting the comment minimum,
+                            then shows up to this many for the subreddit.
                           </p>
                         </div>
 
                         <label className="block">
-                          <span className="text-sm text-gray-400">Max posts fetched</span>
+                          <span className="text-sm text-gray-400">Max posts shown</span>
                           <input
                             type="number"
                             min="1"

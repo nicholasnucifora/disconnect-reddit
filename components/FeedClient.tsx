@@ -72,6 +72,7 @@ export default function FeedClient() {
   const [refreshFailures, setRefreshFailures] = useState<
     Array<{ postId: string; subreddit: string; title?: string; error: string }>
   >([]);
+  const [preparedPostCount, setPreparedPostCount] = useState(0);
   const [contentEpoch, setContentEpoch] = useState(0);
 
   const supabase = createClient();
@@ -122,6 +123,7 @@ export default function FeedClient() {
       setFetchErrors([]);
       setRefreshFailures([]);
       setFeedCleared(false);
+      setPreparedPostCount(nextPosts.length);
       applyPosts(nextPosts);
     },
     [activeFeedId, activeSubs, applyPosts, cacheKey, scopeToken, setCollection, updateSubredditCaches]
@@ -171,6 +173,7 @@ export default function FeedClient() {
       setLoading(false);
       setFetchErrors([]);
       setRefreshFailures([]);
+      setPreparedPostCount(0);
       setContentEpoch((value) => value + 1);
     }
   }, [activeFeedId]);
@@ -182,6 +185,7 @@ export default function FeedClient() {
       if (activeSubs.length === 0) {
         setPosts([]);
         setLoading(false);
+        setPreparedPostCount(0);
         return;
       }
 
@@ -192,6 +196,7 @@ export default function FeedClient() {
         setFetchErrors([]);
         setRefreshFailures([]);
         setFeedCleared(true);
+        setPreparedPostCount(0);
         return;
       }
 
@@ -414,6 +419,7 @@ export default function FeedClient() {
     setLoading(false);
     setFetchErrors([]);
     setRefreshFailures([]);
+    setPreparedPostCount(0);
     setFeedCleared(true);
     setContentEpoch((value) => value + 1);
     try {
@@ -552,7 +558,11 @@ export default function FeedClient() {
         ) : visiblePosts.length === 0 ? (
           <div className="space-y-2 py-16">
             <p className="text-center text-sm text-gray-500">
-              {feedCleared ? "Feed data cleared. Refresh to rebuild this snapshot." : "No posts found"}
+              {feedCleared
+                ? "Feed data cleared. Refresh to rebuild this snapshot."
+                : preparedPostCount > 0
+                ? `Prepared ${preparedPostCount} posts, but they are currently hidden by removed posts.`
+                : "No posts found"}
             </p>
             {fetchErrors.length > 0 && (
               <div className="space-y-1 rounded bg-red-950/40 p-3 text-xs text-red-400">
