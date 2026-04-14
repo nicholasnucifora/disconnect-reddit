@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 import { hydratePostsWithCommentCounts } from "@/lib/comment-counts-client";
 import {
+  findCachedPostsForSubreddit,
   filterDismissedPosts,
   getCachedPostCollection,
   getDismissedPostIds,
@@ -70,6 +71,17 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
       const cached = getCachedPostCollection(cacheKey, normalizedSubreddit);
       if (cached) {
         applyPosts(cached.posts);
+        setLoading(false);
+        return;
+      }
+
+      const cachedFromOtherCollections = findCachedPostsForSubreddit(normalizedSubreddit);
+      if (cachedFromOtherCollections.length > 0) {
+        setCachedPostCollection(cacheKey, cachedFromOtherCollections, {
+          source: "collection-derived",
+          scopeToken: normalizedSubreddit,
+        });
+        applyPosts(cachedFromOtherCollections);
         setLoading(false);
         return;
       }

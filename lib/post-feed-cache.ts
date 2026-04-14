@@ -267,6 +267,60 @@ export function removePostFromCachedCollections(postId: string) {
   }
 }
 
+export function findCachedPostsForSubreddit(subreddit: string): RedditPost[] {
+  if (!canUseStorage()) return [];
+
+  const normalizedSubreddit = subreddit.trim().toLowerCase();
+  const now = Date.now();
+  const merged = new Map<string, RedditPost>();
+  const storageKeys: string[] = [];
+
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const storageKey = window.localStorage.key(index);
+    if (storageKey) {
+      storageKeys.push(storageKey);
+    }
+  }
+
+  for (const storageKey of storageKeys) {
+    if (!storageKey?.startsWith(POST_COLLECTION_CACHE_PREFIX)) continue;
+
+    const cached = parseCachedCollection(window.localStorage.getItem(storageKey));
+    if (!cached) continue;
+
+    if (now - cached.cachedAt > POST_COLLECTION_CACHE_TTL_MS) {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        // Ignore storage write failures.
+      }
+      continue;
+    }
+
+    for (const post of cached.posts) {
+      if (post.subreddit.trim().toLowerCase() !== normalizedSubreddit) continue;
+
+      const existing = merged.get(post.id);
+      if (!existing) {
+        merged.set(post.id, post);
+        continue;
+      }
+
+      merged.set(post.id, {
+        ...existing,
+        ...post,
+        numComments: Math.max(existing.numComments, post.numComments),
+        score: Math.max(existing.score, post.score),
+      });
+    }
+  }
+
+  return Array.from(merged.values()).sort((a, b) => {
+    if (b.numComments !== a.numComments) return b.numComments - a.numComments;
+    return b.createdUtc - a.createdUtc;
+  });
+}
+
 export function getDismissedPostIds(): Set<string> {
   return new Set(readDismissedEntries().map((entry) => entry.id));
 }

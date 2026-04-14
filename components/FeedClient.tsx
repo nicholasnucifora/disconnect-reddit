@@ -6,6 +6,7 @@ import { USERNAME } from "@/lib/config";
 import {
   clearFeedClearedMark,
   clearCachedPostCollection,
+  findCachedPostsForSubreddit,
   filterDismissedPosts,
   getCachedPostCollection,
   getDismissedPostIds,
@@ -47,6 +48,19 @@ function mergeFeedPosts(postGroups: RedditPost[][]): RedditPost[] {
     if (b.numComments !== a.numComments) return b.numComments - a.numComments;
     return b.createdUtc - a.createdUtc;
   });
+}
+
+function updateSubredditCaches(subreddits: string[], posts: RedditPost[]) {
+  for (const subreddit of subreddits) {
+    const normalized = subreddit.trim().toLowerCase();
+    const subredditPosts = posts.filter(
+      (post) => post.subreddit.trim().toLowerCase() === normalized
+    );
+    setCachedPostCollection(getSubredditCacheKey(normalized), subredditPosts, {
+      source: "feed-derived",
+      scopeToken: normalized,
+    });
+  }
 }
 
 export default function FeedClient() {
@@ -160,6 +174,7 @@ export default function FeedClient() {
       if (!options.forceRefresh) {
         const cached = getCachedPostCollection(cacheKey, scopeToken);
         if (cached) {
+          updateSubredditCaches(activeSubs, cached.posts);
           clearFeedClearedMark(activeFeedId);
           feedClearedRef.current = false;
           applyPosts(cached.posts);
@@ -170,60 +185,60 @@ export default function FeedClient() {
           return;
         }
 
-        const cachedSubredditCollections = activeSubs
+        const cachedSubredditPosts = activeSubs
           .map((subreddit) => {
             const normalized = subreddit.trim().toLowerCase();
+            const cached =
+              getCachedPostCollection(getSubredditCacheKey(normalized), normalized) ??
+              (() => {
+                const fallbackPosts = findCachedPostsForSubreddit(normalized);
+                if (fallbackPosts.length === 0) return null;
+                setCachedPostCollection(getSubredditCacheKey(normalized), fallbackPosts, {
+                  source: "collection-derived",
+                  scopeToken: normalized,
+                });
+                return {
+                  posts: fallbackPosts,
+                  cachedAt: Date.now(),
+                  source: "collection-derived",
+                  scopeToken: normalized,
+                };
+              })();
+
             return {
               subreddit: normalized,
-              cached: getCachedPostCollection(
-                getSubredditCacheKey(normalized),
-                normalized
-              ),
+              posts: cached?.posts ?? [],
             };
           })
-          .filter(
-            (
-              entry
-            ): entry is {
-              subreddit: string;
-              cached: {
-                posts: RedditPost[];
-                cachedAt: number;
-                generatedAt?: string;
-                source?: string;
-                scopeToken?: string;
-              };
-            } => entry.cached !== null
-          );
+          .filter((entry) => entry.posts.length > 0);
 
-        const cachedSubredditPosts = cachedSubredditCollections.map(
-          (entry) => entry.cached.posts
-        );
-        const cachedSubredditNames = new Set(
-          cachedSubredditCollections.map((entry) => entry.subreddit)
-        );
+        const cachedSubredditNames = new Set(cachedSubredditPosts.map((entry) => entry.subreddit));
         const missingSubreddits = activeSubs
           .map((subreddit) => subreddit.trim().toLowerCase())
           .filter((subreddit) => !cachedSubredditNames.has(subreddit));
 
         if (cachedSubredditPosts.length > 0) {
-          const mergedCachedPosts = mergeFeedPosts(cachedSubredditPosts);
-          clearFeedClearedMark(activeFeedId);
-          feedClearedRef.current = false;
-          setFetchErrors([]);
-          setRefreshFailures([]);
-          setFeedCleared(false);
-          applyPosts(mergedCachedPosts);
+          const mergedCachedPosts = mergeFeedPosts(
+            cachedSubredditPosts.map((entry) => entry.posts)
+          );
 
           if (missingSubreddits.length === 0) {
+            updateSubredditCaches(activeSubs, mergedCachedPosts);
             setCachedPostCollection(cacheKey, mergedCachedPosts, {
               source: "subreddit-cache",
               scopeToken,
             });
+            clearFeedClearedMark(activeFeedId);
+            feedClearedRef.current = false;
+            setFetchErrors([]);
+            setRefreshFailures([]);
+            setFeedCleared(false);
+            applyPosts(mergedCachedPosts);
             setLoading(false);
             return;
           }
 
+          setLoading(true);
           try {
             const response = await fetch(
               `/api/reddit/posts?subreddits=${encodeURIComponent(
@@ -241,26 +256,21 @@ export default function FeedClient() {
             const fetchedMissingPosts: RedditPost[] = Array.isArray(data.posts)
               ? data.posts
               : [];
-            for (const subreddit of missingSubreddits) {
-              const subredditPosts = fetchedMissingPosts.filter(
-                (post) => post.subreddit.trim().toLowerCase() === subreddit
-              );
-              setCachedPostCollection(getSubredditCacheKey(subreddit), subredditPosts, {
-                source: "subreddit",
-                scopeToken: subreddit,
-              });
-            }
 
             const mergedPosts = mergeFeedPosts([
-              ...cachedSubredditPosts,
+              ...cachedSubredditPosts.map((entry) => entry.posts),
               fetchedMissingPosts,
             ]);
+            updateSubredditCaches(activeSubs, mergedPosts);
             setCachedPostCollection(cacheKey, mergedPosts, {
               source: "subreddit-cache+network",
               scopeToken,
             });
+            clearFeedClearedMark(activeFeedId);
+            feedClearedRef.current = false;
             setFetchErrors(Array.isArray(data.errors) ? data.errors : []);
             setRefreshFailures([]);
+            setFeedCleared(false);
             applyPosts(mergedPosts);
             setLoading(false);
             return;
@@ -288,6 +298,7 @@ export default function FeedClient() {
 
         if (requestIdRef.current !== requestId) return;
 
+        updateSubredditCaches(activeSubs, fetched);
         setCachedPostCollection(cacheKey, fetched, {
           generatedAt: json.generatedAt,
           source: json.source,
