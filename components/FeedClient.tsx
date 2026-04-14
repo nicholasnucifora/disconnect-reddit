@@ -176,23 +176,28 @@ export default function FeedClient() {
     feedClearedRef.current = feedCleared;
   }, [feedCleared]);
 
+  const ready = subredditsReady && dismissedReady && feedsReady;
+
   useEffect(() => {
     const cleared = isFeedMarkedCleared(activeFeedId);
+    requestIdRef.current += 1;
     feedClearedRef.current = cleared;
     setFeedCleared(cleared);
+    setPosts([]);
+    setFetchErrors([]);
+    setRefreshFailures([]);
+    setRefreshSubredditSummaries([]);
+    setRefreshFetchFailures([]);
+    setPreparedPostCount(0);
     if (cleared) {
-      setPosts([]);
       setLoading(false);
-        setFetchErrors([]);
-        setRefreshFailures([]);
-        setRefreshSubredditSummaries([]);
-        setRefreshFetchFailures([]);
-        setPreparedPostCount(0);
-        setContentEpoch((value) => value + 1);
+      setContentEpoch((value) => value + 1);
+      return;
     }
-  }, [activeFeedId]);
-
-  const ready = subredditsReady && dismissedReady && feedsReady;
+    if (ready && activeSubs.length > 0) {
+      setLoading(true);
+    }
+  }, [activeFeedId, activeSubs.length, ready]);
 
   const fetchPosts = useCallback(
     async (options: { forceRefresh?: boolean } = {}) => {
@@ -270,56 +275,15 @@ export default function FeedClient() {
           .map((subreddit) => subreddit.trim().toLowerCase())
           .filter((subreddit) => !cachedSubredditNames.has(subreddit));
 
-        if (cachedSubredditPosts.length > 0) {
+        if (cachedSubredditPosts.length > 0 && missingSubreddits.length === 0) {
           const mergedCachedPosts = mergeFeedPosts(
             cachedSubredditPosts.map((entry) => entry.posts)
           );
-
-          if (missingSubreddits.length === 0) {
-            applyFetchedFeedPosts(mergedCachedPosts, {
-              source: "subreddit-cache",
-            });
-            setLoading(false);
-            return;
-          }
-
-          setLoading(true);
-          try {
-            const response = await fetch(
-              `/api/reddit/posts?subreddits=${encodeURIComponent(
-                missingSubreddits.join(",")
-              )}&sort=hot`,
-              { cache: "no-store" }
-            );
-            const data = await response.json().catch(() => ({}));
-            if (!response.ok || data.error) {
-              throw new Error(data.error ?? "Failed to fetch posts");
-            }
-
-            if (requestIdRef.current !== requestId) return;
-
-            const fetchedMissingPosts: RedditPost[] = Array.isArray(data.posts)
-              ? data.posts
-              : [];
-
-            const mergedPosts = mergeFeedPosts([
-              ...cachedSubredditPosts.map((entry) => entry.posts),
-              fetchedMissingPosts,
-            ]);
-            applyFetchedFeedPosts(mergedPosts, {
-              source: "subreddit-cache+network",
-            });
-            setFetchErrors(Array.isArray(data.errors) ? data.errors : []);
-            setLoading(false);
-            return;
-          } catch (error) {
-            if (requestIdRef.current !== requestId) return;
-            setFetchErrors([
-              error instanceof Error ? error.message : "Unknown error",
-            ]);
-            setLoading(false);
-            return;
-          }
+          applyFetchedFeedPosts(mergedCachedPosts, {
+            source: "subreddit-cache",
+          });
+          setLoading(false);
+          return;
         }
       }
 

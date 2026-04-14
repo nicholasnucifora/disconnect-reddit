@@ -376,7 +376,14 @@ export async function buildAndStoreFeedSnapshot(
 
 export async function getOrBuildFeedSnapshot(feedId: string): Promise<FeedSnapshotResult> {
   const snapshot = await readLatestFeedSnapshot(feedId);
-  if (snapshot) return snapshot;
+  if (snapshot) {
+    if (snapshot.posts.length > 0) return snapshot;
+
+    const currentSubreddits = await getFeedSubreddits(feedId);
+    if (currentSubreddits.length === 0) {
+      return snapshot;
+    }
+  }
   return buildAndStoreFeedSnapshot(feedId);
 }
 
