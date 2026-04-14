@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 import { usePostCollections } from "@/lib/post-collections-context";
 import {
+  clearDismissedPosts,
   clearFeedClearedMark,
   filterDismissedPosts,
   getDismissedPostIds,
@@ -50,6 +51,7 @@ export default function FeedClient() {
   const { subreddits, ready: subredditsReady } = useSubreddits();
   const { feeds, activeFeedId, getActiveFeedSubreddits, ready: feedsReady } = useFeeds();
   const {
+    clearAllCollections,
     clearCollection,
     findPostsForSubreddit,
     getCollection,
@@ -64,6 +66,7 @@ export default function FeedClient() {
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [clearingRemoved, setClearingRemoved] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [feedCleared, setFeedCleared] = useState(false);
   const [dismissedReady, setDismissedReady] = useState(false);
@@ -293,9 +296,8 @@ export default function FeedClient() {
         const res = await fetch(`/api/reddit/feed?feedId=${encodeURIComponent(activeFeedId)}`, {
           cache: "no-store",
         });
-        if (!res.ok) throw new Error("Failed to fetch posts");
-
-        const json = await res.json();
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json.error ?? "Failed to fetch posts");
         const fetched: RedditPost[] = json.posts ?? [];
 
         if (requestIdRef.current !== requestId) return;
@@ -442,6 +444,36 @@ export default function FeedClient() {
     }
   }
 
+  async function clearRemovedData() {
+    setClearingRemoved(true);
+    setRefreshMessage(null);
+
+    try {
+      clearDismissedPosts();
+      dismissedIdsRef.current = new Set();
+      setDismissedIds(new Set());
+      clearAllCollections();
+
+      const { error } = await supabase
+        .from("dismissed_posts")
+        .delete()
+        .eq("username", USERNAME);
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      await fetchPosts({ forceRefresh: true });
+      setRefreshMessage("Cleared removed post data for this account.");
+    } catch (error) {
+      setRefreshMessage(
+        error instanceof Error ? error.message : "Failed to clear removed post data"
+      );
+    } finally {
+      setClearingRemoved(false);
+    }
+  }
+
   async function dismissPost(postId: string) {
     const nextDismissedIds = new Set(dismissedIdsRef.current);
     nextDismissedIds.add(postId);
@@ -503,18 +535,30 @@ export default function FeedClient() {
           <p className="text-xs text-gray-500">
             Rebuild this feed snapshot now to test fresh comment counts.
           </p>
+          <p className="text-xs text-gray-500">
+            {visiblePosts.length} loaded
+            {preparedPostCount > visiblePosts.length ? ` of ${preparedPostCount} prepared` : ""}
+            {activeSubs.length > 0 ? ` across ${activeSubs.length} subreddits` : ""}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <button
             onClick={clearPreparedFeed}
-            disabled={loading || clearing || refreshing || activeSubs.length === 0}
+            disabled={loading || clearing || clearingRemoved || refreshing || activeSubs.length === 0}
             className="rounded border border-red-800 bg-red-950/40 px-3 py-2 text-sm font-medium text-red-200 transition-colors hover:bg-red-900/50 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
           >
             {clearing ? "Clearing..." : "Clear Feed Data"}
           </button>
           <button
+            onClick={clearRemovedData}
+            disabled={loading || clearing || clearingRemoved || refreshing}
+            className="rounded border border-amber-800 bg-amber-950/40 px-3 py-2 text-sm font-medium text-amber-200 transition-colors hover:bg-amber-900/50 disabled:cursor-not-allowed disabled:border-gray-700 disabled:bg-gray-800 disabled:text-gray-500"
+          >
+            {clearingRemoved ? "Clearing Removed..." : "Clear Removed Data"}
+          </button>
+          <button
             onClick={refreshPreparedFeed}
-            disabled={loading || clearing || refreshing || activeSubs.length === 0}
+            disabled={loading || clearing || clearingRemoved || refreshing || activeSubs.length === 0}
             className="rounded bg-teal-700 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-teal-600 disabled:cursor-not-allowed disabled:bg-gray-700 disabled:text-gray-400"
           >
             {refreshing ? "Refreshing..." : "Refresh Feed Data"}

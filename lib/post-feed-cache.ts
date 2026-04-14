@@ -337,6 +337,10 @@ export function removeDismissedPost(postId: string) {
   writeDismissedEntries(entries);
 }
 
+export function clearDismissedPosts() {
+  writeDismissedEntries([]);
+}
+
 export function filterDismissedPosts(posts: RedditPost[], dismissedIds: Set<string>): RedditPost[] {
   if (dismissedIds.size === 0) return posts;
   return posts.filter((post) => !dismissedIds.has(post.id));

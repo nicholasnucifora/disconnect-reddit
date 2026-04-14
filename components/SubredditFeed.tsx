@@ -70,12 +70,16 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       setError(null);
+      setLoading(true);
+      setPosts([]);
 
       const cached = getCollection(cacheKey, normalizedSubreddit);
       if (cached && cached.posts.length > 0) {
         applyPosts(cached.posts);
-        setLoading(false);
-        return;
+        if (cached.source === "subreddit") {
+          setLoading(false);
+          return;
+        }
       }
 
       const cachedFromOtherCollections = findPostsForSubreddit(normalizedSubreddit);
@@ -85,19 +89,14 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
           scopeToken: normalizedSubreddit,
         });
         applyPosts(cachedFromOtherCollections);
-        setLoading(false);
-        return;
       }
-
-      setLoading(true);
-      setPosts([]);
 
       try {
         const response = await fetch(
           `/api/reddit/posts?subreddits=${encodeURIComponent(normalizedSubreddit)}&sort=hot`,
           { cache: "no-store" }
         );
-        const data = await response.json();
+        const data = await response.json().catch(() => ({}));
         if (!response.ok || data.error) {
           throw new Error(data.error ?? "Failed to load");
         }
@@ -156,6 +155,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
     <main className="min-h-screen bg-gray-950">
       <div className="mx-auto max-w-4xl px-4 py-8">
         <h1 className="mb-6 text-xl font-bold text-teal-400">r/{subreddit}</h1>
+        <p className="mb-6 text-sm text-gray-500">{posts.length} loaded</p>
 
         {loading && (
           <div className="flex items-center justify-center py-16">
