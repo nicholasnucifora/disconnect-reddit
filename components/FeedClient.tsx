@@ -3,12 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
+import { usePostCollections } from "@/lib/post-collections-context";
 import {
   clearFeedClearedMark,
-  clearCachedPostCollection,
-  findCachedPostsForSubreddit,
   filterDismissedPosts,
-  getCachedPostCollection,
   getDismissedPostIds,
   getFeedCacheKey,
   getSubredditCacheKey,
@@ -16,8 +14,6 @@ import {
   markFeedCleared,
   persistDismissedPost,
   removeDismissedPost,
-  removePostFromCachedCollections,
-  setCachedPostCollection,
 } from "@/lib/post-feed-cache";
 import { RedditPost } from "@/lib/reddit";
 import { useFeeds } from "@/lib/feeds-context";
@@ -50,22 +46,16 @@ function mergeFeedPosts(postGroups: RedditPost[][]): RedditPost[] {
   });
 }
 
-function updateSubredditCaches(subreddits: string[], posts: RedditPost[]) {
-  for (const subreddit of subreddits) {
-    const normalized = subreddit.trim().toLowerCase();
-    const subredditPosts = posts.filter(
-      (post) => post.subreddit.trim().toLowerCase() === normalized
-    );
-    setCachedPostCollection(getSubredditCacheKey(normalized), subredditPosts, {
-      source: "feed-derived",
-      scopeToken: normalized,
-    });
-  }
-}
-
 export default function FeedClient() {
   const { subreddits, ready: subredditsReady } = useSubreddits();
   const { feeds, activeFeedId, getActiveFeedSubreddits, ready: feedsReady } = useFeeds();
+  const {
+    clearCollection,
+    findPostsForSubreddit,
+    getCollection,
+    removePostEverywhere,
+    setCollection,
+  } = usePostCollections();
   const activeSubs = useMemo(
     () => getActiveFeedSubreddits(subreddits),
     [getActiveFeedSubreddits, subreddits]
@@ -95,10 +85,47 @@ export default function FeedClient() {
     [activeSubs]
   );
 
+  const updateSubredditCaches = useCallback(
+    (subredditsToCache: string[], postsToCache: RedditPost[]) => {
+      for (const subreddit of subredditsToCache) {
+        const normalized = subreddit.trim().toLowerCase();
+        const subredditPosts = postsToCache.filter(
+          (post) => post.subreddit.trim().toLowerCase() === normalized
+        );
+        setCollection(getSubredditCacheKey(normalized), subredditPosts, {
+          source: "feed-derived",
+          scopeToken: normalized,
+        });
+      }
+    },
+    [setCollection]
+  );
+
   const applyPosts = useCallback((nextPosts: RedditPost[]) => {
     if (feedClearedRef.current) return;
     setPosts(filterDismissedPosts(nextPosts, dismissedIdsRef.current));
   }, []);
+
+  const applyFetchedFeedPosts = useCallback(
+    (
+      nextPosts: RedditPost[],
+      options: { generatedAt?: string; source?: string } = {}
+    ) => {
+      updateSubredditCaches(activeSubs, nextPosts);
+      setCollection(cacheKey, nextPosts, {
+        generatedAt: options.generatedAt,
+        source: options.source,
+        scopeToken,
+      });
+      clearFeedClearedMark(activeFeedId);
+      feedClearedRef.current = false;
+      setFetchErrors([]);
+      setRefreshFailures([]);
+      setFeedCleared(false);
+      applyPosts(nextPosts);
+    },
+    [activeFeedId, activeSubs, applyPosts, cacheKey, scopeToken, setCollection, updateSubredditCaches]
+  );
 
   useEffect(() => {
     const localIds = getDismissedPostIds();
@@ -172,7 +199,7 @@ export default function FeedClient() {
       requestIdRef.current = requestId;
 
       if (!options.forceRefresh) {
-        const cached = getCachedPostCollection(cacheKey, scopeToken);
+        const cached = getCollection(cacheKey, scopeToken);
         if (cached) {
           updateSubredditCaches(activeSubs, cached.posts);
           clearFeedClearedMark(activeFeedId);
@@ -189,11 +216,11 @@ export default function FeedClient() {
           .map((subreddit) => {
             const normalized = subreddit.trim().toLowerCase();
             const cached =
-              getCachedPostCollection(getSubredditCacheKey(normalized), normalized) ??
+              getCollection(getSubredditCacheKey(normalized), normalized) ??
               (() => {
-                const fallbackPosts = findCachedPostsForSubreddit(normalized);
+                const fallbackPosts = findPostsForSubreddit(normalized);
                 if (fallbackPosts.length === 0) return null;
-                setCachedPostCollection(getSubredditCacheKey(normalized), fallbackPosts, {
+                setCollection(getSubredditCacheKey(normalized), fallbackPosts, {
                   source: "collection-derived",
                   scopeToken: normalized,
                 });
@@ -223,17 +250,9 @@ export default function FeedClient() {
           );
 
           if (missingSubreddits.length === 0) {
-            updateSubredditCaches(activeSubs, mergedCachedPosts);
-            setCachedPostCollection(cacheKey, mergedCachedPosts, {
+            applyFetchedFeedPosts(mergedCachedPosts, {
               source: "subreddit-cache",
-              scopeToken,
             });
-            clearFeedClearedMark(activeFeedId);
-            feedClearedRef.current = false;
-            setFetchErrors([]);
-            setRefreshFailures([]);
-            setFeedCleared(false);
-            applyPosts(mergedCachedPosts);
             setLoading(false);
             return;
           }
@@ -261,17 +280,10 @@ export default function FeedClient() {
               ...cachedSubredditPosts.map((entry) => entry.posts),
               fetchedMissingPosts,
             ]);
-            updateSubredditCaches(activeSubs, mergedPosts);
-            setCachedPostCollection(cacheKey, mergedPosts, {
+            applyFetchedFeedPosts(mergedPosts, {
               source: "subreddit-cache+network",
-              scopeToken,
             });
-            clearFeedClearedMark(activeFeedId);
-            feedClearedRef.current = false;
             setFetchErrors(Array.isArray(data.errors) ? data.errors : []);
-            setRefreshFailures([]);
-            setFeedCleared(false);
-            applyPosts(mergedPosts);
             setLoading(false);
             return;
           } catch (error) {
@@ -298,18 +310,11 @@ export default function FeedClient() {
 
         if (requestIdRef.current !== requestId) return;
 
-        updateSubredditCaches(activeSubs, fetched);
-        setCachedPostCollection(cacheKey, fetched, {
+        applyFetchedFeedPosts(fetched, {
           generatedAt: json.generatedAt,
           source: json.source,
-          scopeToken,
         });
-        clearFeedClearedMark(activeFeedId);
-        feedClearedRef.current = false;
         setFetchErrors(json.errors ?? []);
-        setRefreshFailures([]);
-        setFeedCleared(false);
-        applyPosts(fetched);
       } catch (error) {
         if (requestIdRef.current !== requestId) return;
         setFetchErrors([error instanceof Error ? error.message : "Unknown error"]);
@@ -319,7 +324,19 @@ export default function FeedClient() {
         }
       }
     },
-    [activeFeedId, activeSubs.length, applyPosts, cacheKey, scopeToken]
+    [
+      activeFeedId,
+      activeSubs,
+      activeSubs.length,
+      applyFetchedFeedPosts,
+      applyPosts,
+      cacheKey,
+      findPostsForSubreddit,
+      getCollection,
+      scopeToken,
+      setCollection,
+      updateSubredditCaches,
+    ]
   );
 
   useEffect(() => {
@@ -353,7 +370,15 @@ export default function FeedClient() {
         throw new Error(body.error ?? "Failed to refresh prepared feed");
       }
 
-      await fetchPosts({ forceRefresh: true });
+      const refreshedPosts = Array.isArray(body.posts) ? (body.posts as RedditPost[]) : null;
+      if (refreshedPosts) {
+        applyFetchedFeedPosts(refreshedPosts, {
+          generatedAt: typeof body.generatedAt === "string" ? body.generatedAt : undefined,
+          source: "refreshed",
+        });
+      } else {
+        await fetchPosts({ forceRefresh: true });
+      }
       const failedRefreshes = Array.isArray(body.failedRefreshes) ? body.failedRefreshes : [];
       if (failedRefreshes.length > 0) {
         const titleMap = new Map(posts.map((post) => [post.id, post.title] as const));
@@ -384,7 +409,7 @@ export default function FeedClient() {
     requestIdRef.current += 1;
     markFeedCleared(activeFeedId);
     feedClearedRef.current = true;
-    clearCachedPostCollection(cacheKey);
+    clearCollection(cacheKey);
     setPosts([]);
     setLoading(false);
     setFetchErrors([]);
@@ -428,7 +453,7 @@ export default function FeedClient() {
     const expiresAtIso = expiresAt.toISOString();
 
     persistDismissedPost(postId, expiresAtIso);
-    removePostFromCachedCollections(postId);
+    removePostEverywhere(postId);
 
     void supabase.from("dismissed_posts").upsert(
       {

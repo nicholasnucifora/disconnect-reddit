@@ -7,7 +7,7 @@ const LEGACY_SESSION_DISMISSED_KEY = "localDismissed";
 
 export const POST_COLLECTION_CACHE_TTL_MS = 15 * 60 * 1000;
 
-interface CachedPostCollection {
+export interface CachedPostCollection {
   posts: RedditPost[];
   cachedAt: number;
   generatedAt?: string;

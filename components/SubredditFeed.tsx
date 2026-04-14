@@ -4,15 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { USERNAME } from "@/lib/config";
 import { hydratePostsWithCommentCounts } from "@/lib/comment-counts-client";
+import { usePostCollections } from "@/lib/post-collections-context";
 import {
-  findCachedPostsForSubreddit,
   filterDismissedPosts,
-  getCachedPostCollection,
   getDismissedPostIds,
   getSubredditCacheKey,
   persistDismissedPost,
-  removePostFromCachedCollections,
-  setCachedPostCollection,
 } from "@/lib/post-feed-cache";
 import { RedditPost } from "@/lib/reddit";
 import PostCard from "./PostCard";
@@ -27,6 +24,12 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
   const [error, setError] = useState<string | null>(null);
 
   const supabase = createClient();
+  const {
+    findPostsForSubreddit,
+    getCollection,
+    removePostEverywhere,
+    setCollection,
+  } = usePostCollections();
   const dismissedIdsRef = useRef<Set<string>>(new Set());
   const requestIdRef = useRef(0);
   const normalizedSubreddit = useMemo(() => subreddit.trim().toLowerCase(), [subreddit]);
@@ -68,16 +71,16 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
       requestIdRef.current = requestId;
       setError(null);
 
-      const cached = getCachedPostCollection(cacheKey, normalizedSubreddit);
+      const cached = getCollection(cacheKey, normalizedSubreddit);
       if (cached) {
         applyPosts(cached.posts);
         setLoading(false);
         return;
       }
 
-      const cachedFromOtherCollections = findCachedPostsForSubreddit(normalizedSubreddit);
+      const cachedFromOtherCollections = findPostsForSubreddit(normalizedSubreddit);
       if (cachedFromOtherCollections.length > 0) {
-        setCachedPostCollection(cacheKey, cachedFromOtherCollections, {
+        setCollection(cacheKey, cachedFromOtherCollections, {
           source: "collection-derived",
           scopeToken: normalizedSubreddit,
         });
@@ -102,7 +105,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
         const hydratedPosts = await hydratePostsWithCommentCounts(data.posts ?? []);
         if (cancelled || requestIdRef.current !== requestId) return;
 
-        setCachedPostCollection(cacheKey, hydratedPosts, {
+        setCollection(cacheKey, hydratedPosts, {
           source: "subreddit",
           scopeToken: normalizedSubreddit,
         });
@@ -122,7 +125,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
     return () => {
       cancelled = true;
     };
-  }, [applyPosts, cacheKey, normalizedSubreddit]);
+  }, [applyPosts, cacheKey, findPostsForSubreddit, getCollection, normalizedSubreddit, setCollection]);
 
   async function dismissPost(postId: string) {
     const nextDismissedIds = new Set(dismissedIdsRef.current);
@@ -135,7 +138,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
     const expiresAtIso = expiresAt.toISOString();
 
     persistDismissedPost(postId, expiresAtIso);
-    removePostFromCachedCollections(postId);
+    removePostEverywhere(postId);
 
     void supabase.from("dismissed_posts").upsert(
       {

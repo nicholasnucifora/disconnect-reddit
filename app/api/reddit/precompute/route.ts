@@ -66,6 +66,7 @@ export async function POST(request: NextRequest) {
       feedId,
       generatedAt: snapshot.generatedAt,
       postCount: snapshot.posts.length,
+      posts: snapshot.posts,
       failedRefreshes: snapshot.failedRefreshes,
     });
   } catch (err) {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { USERNAME } from "@/lib/config";
-import { clearAllCachedPostCollections } from "@/lib/post-feed-cache";
+import { usePostCollections } from "@/lib/post-collections-context";
 import {
   DEFAULT_SUBREDDIT_MAX_POSTS,
   DEFAULT_SUBREDDIT_MIN_COMMENTS,
@@ -77,6 +77,7 @@ function makeSchedule(index: number): UsageScheduleWithWindows {
 
 export default function UsageSettingsClient() {
   const { refreshStatus } = useUsage();
+  const { clearAllCollections } = usePostCollections();
   const { subreddits, ready: subredditsReady } = useSubreddits();
   const supabase = useMemo(() => createClient(), []);
   const [loading, setLoading] = useState(true);
@@ -283,7 +284,7 @@ export default function UsageSettingsClient() {
         invalidationWarning = true;
       }
 
-      clearAllCachedPostCollections();
+      clearAllCollections();
       await refreshStatus();
       setMessage(
         invalidationWarning
