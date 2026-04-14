@@ -10,6 +10,7 @@ import {
   getCachedPostCollection,
   getDismissedPostIds,
   getFeedCacheKey,
+  getSubredditCacheKey,
   isFeedMarkedCleared,
   markFeedCleared,
   persistDismissedPost,
@@ -21,6 +22,32 @@ import { RedditPost } from "@/lib/reddit";
 import { useFeeds } from "@/lib/feeds-context";
 import { useSubreddits } from "@/lib/subreddits-context";
 import PostCard from "./PostCard";
+
+function mergeFeedPosts(postGroups: RedditPost[][]): RedditPost[] {
+  const merged = new Map<string, RedditPost>();
+
+  for (const posts of postGroups) {
+    for (const post of posts) {
+      const existing = merged.get(post.id);
+      if (!existing) {
+        merged.set(post.id, post);
+        continue;
+      }
+
+      merged.set(post.id, {
+        ...existing,
+        ...post,
+        numComments: Math.max(existing.numComments, post.numComments),
+        score: Math.max(existing.score, post.score),
+      });
+    }
+  }
+
+  return Array.from(merged.values()).sort((a, b) => {
+    if (b.numComments !== a.numComments) return b.numComments - a.numComments;
+    return b.createdUtc - a.createdUtc;
+  });
+}
 
 export default function FeedClient() {
   const { subreddits, ready: subredditsReady } = useSubreddits();
@@ -141,6 +168,110 @@ export default function FeedClient() {
           setFeedCleared(false);
           setLoading(false);
           return;
+        }
+
+        const cachedSubredditCollections = activeSubs
+          .map((subreddit) => {
+            const normalized = subreddit.trim().toLowerCase();
+            return {
+              subreddit: normalized,
+              cached: getCachedPostCollection(
+                getSubredditCacheKey(normalized),
+                normalized
+              ),
+            };
+          })
+          .filter(
+            (
+              entry
+            ): entry is {
+              subreddit: string;
+              cached: {
+                posts: RedditPost[];
+                cachedAt: number;
+                generatedAt?: string;
+                source?: string;
+                scopeToken?: string;
+              };
+            } => entry.cached !== null
+          );
+
+        const cachedSubredditPosts = cachedSubredditCollections.map(
+          (entry) => entry.cached.posts
+        );
+        const cachedSubredditNames = new Set(
+          cachedSubredditCollections.map((entry) => entry.subreddit)
+        );
+        const missingSubreddits = activeSubs
+          .map((subreddit) => subreddit.trim().toLowerCase())
+          .filter((subreddit) => !cachedSubredditNames.has(subreddit));
+
+        if (cachedSubredditPosts.length > 0) {
+          const mergedCachedPosts = mergeFeedPosts(cachedSubredditPosts);
+          clearFeedClearedMark(activeFeedId);
+          feedClearedRef.current = false;
+          setFetchErrors([]);
+          setRefreshFailures([]);
+          setFeedCleared(false);
+          applyPosts(mergedCachedPosts);
+
+          if (missingSubreddits.length === 0) {
+            setCachedPostCollection(cacheKey, mergedCachedPosts, {
+              source: "subreddit-cache",
+              scopeToken,
+            });
+            setLoading(false);
+            return;
+          }
+
+          try {
+            const response = await fetch(
+              `/api/reddit/posts?subreddits=${encodeURIComponent(
+                missingSubreddits.join(",")
+              )}&sort=hot`,
+              { cache: "no-store" }
+            );
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok || data.error) {
+              throw new Error(data.error ?? "Failed to fetch posts");
+            }
+
+            if (requestIdRef.current !== requestId) return;
+
+            const fetchedMissingPosts: RedditPost[] = Array.isArray(data.posts)
+              ? data.posts
+              : [];
+            for (const subreddit of missingSubreddits) {
+              const subredditPosts = fetchedMissingPosts.filter(
+                (post) => post.subreddit.trim().toLowerCase() === subreddit
+              );
+              setCachedPostCollection(getSubredditCacheKey(subreddit), subredditPosts, {
+                source: "subreddit",
+                scopeToken: subreddit,
+              });
+            }
+
+            const mergedPosts = mergeFeedPosts([
+              ...cachedSubredditPosts,
+              fetchedMissingPosts,
+            ]);
+            setCachedPostCollection(cacheKey, mergedPosts, {
+              source: "subreddit-cache+network",
+              scopeToken,
+            });
+            setFetchErrors(Array.isArray(data.errors) ? data.errors : []);
+            setRefreshFailures([]);
+            applyPosts(mergedPosts);
+            setLoading(false);
+            return;
+          } catch (error) {
+            if (requestIdRef.current !== requestId) return;
+            setFetchErrors([
+              error instanceof Error ? error.message : "Unknown error",
+            ]);
+            setLoading(false);
+            return;
+          }
         }
       }
 

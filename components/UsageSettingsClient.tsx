@@ -219,7 +219,8 @@ export default function UsageSettingsClient() {
 
         return {
           username: USERNAME,
-          subreddit: normalized,
+          subreddit,
+          normalizedSubreddit: normalized,
           max_posts: sanitizeSubredditMaxPosts(
             current?.maxPosts === "" ? null : Number(current?.maxPosts)
           ),
@@ -258,7 +259,7 @@ export default function UsageSettingsClient() {
       setSubredditRules(
         Object.fromEntries(
           subredditPayload.map((entry) => [
-            entry.subreddit,
+            entry.normalizedSubreddit,
             {
               maxPosts: String(entry.max_posts),
               minComments: String(entry.min_comments),
