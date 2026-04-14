@@ -99,13 +99,17 @@ export default function FeedClient() {
         const subredditPosts = postsToCache.filter(
           (post) => post.subreddit.trim().toLowerCase() === normalized
         );
+        if (subredditPosts.length === 0) {
+          clearCollection(getSubredditCacheKey(normalized));
+          continue;
+        }
         setCollection(getSubredditCacheKey(normalized), subredditPosts, {
           source: "feed-derived",
           scopeToken: normalized,
         });
       }
     },
-    [setCollection]
+    [clearCollection, setCollection]
   );
 
   const applyPosts = useCallback((nextPosts: RedditPost[]) => {
@@ -232,22 +236,27 @@ export default function FeedClient() {
         const cachedSubredditPosts = activeSubs
           .map((subreddit) => {
             const normalized = subreddit.trim().toLowerCase();
+            const existingCache = getCollection(
+              getSubredditCacheKey(normalized),
+              normalized
+            );
             const cached =
-              getCollection(getSubredditCacheKey(normalized), normalized) ??
-              (() => {
-                const fallbackPosts = findPostsForSubreddit(normalized);
-                if (fallbackPosts.length === 0) return null;
-                setCollection(getSubredditCacheKey(normalized), fallbackPosts, {
-                  source: "collection-derived",
-                  scopeToken: normalized,
-                });
-                return {
-                  posts: fallbackPosts,
-                  cachedAt: Date.now(),
-                  source: "collection-derived",
-                  scopeToken: normalized,
-                };
-              })();
+              existingCache && existingCache.posts.length > 0
+                ? existingCache
+                : (() => {
+                    const fallbackPosts = findPostsForSubreddit(normalized);
+                    if (fallbackPosts.length === 0) return null;
+                    setCollection(getSubredditCacheKey(normalized), fallbackPosts, {
+                      source: "collection-derived",
+                      scopeToken: normalized,
+                    });
+                    return {
+                      posts: fallbackPosts,
+                      cachedAt: Date.now(),
+                      source: "collection-derived",
+                      scopeToken: normalized,
+                    };
+                  })();
 
             return {
               subreddit: normalized,

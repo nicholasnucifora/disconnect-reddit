@@ -72,7 +72,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
       setError(null);
 
       const cached = getCollection(cacheKey, normalizedSubreddit);
-      if (cached) {
+      if (cached && cached.posts.length > 0) {
         applyPosts(cached.posts);
         setLoading(false);
         return;
