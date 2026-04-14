@@ -20,7 +20,6 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 const SNAPSHOT_TTL_MS = 12 * 60 * 60 * 1000;
-const SNAPSHOT_POST_LIMIT = 100;
 const SNAPSHOT_REFRESH_LIMIT = 48;
 
 export interface FeedSnapshotResult {
@@ -170,6 +169,10 @@ async function buildFeedPosts(
   }
   const nowUtc = Math.floor(Date.now() / 1000);
   const threeDaysAgo = nowUtc - 3 * 24 * 60 * 60;
+  const totalRequestedPosts = subredditRules.reduce(
+    (sum, rule) => sum + Math.max(1, rule.maxPosts),
+    0
+  );
 
   const results = await Promise.allSettled(
     subredditRules.map((rule) =>
@@ -198,7 +201,12 @@ async function buildFeedPosts(
   const merged = mergePosts(posts);
   const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
   const postsToRefresh = merged
-    .slice(0, options.forceRefresh ? SNAPSHOT_POST_LIMIT : SNAPSHOT_REFRESH_LIMIT)
+    .slice(
+      0,
+      options.forceRefresh
+        ? totalRequestedPosts
+        : Math.min(totalRequestedPosts, SNAPSHOT_REFRESH_LIMIT)
+    )
     .filter((post) => {
       if (options.forceRefresh) return true;
       const cached = cachedCounts.get(post.id);
@@ -256,7 +264,7 @@ async function buildFeedPosts(
   });
 
   return {
-    posts: cappedPosts.slice(0, SNAPSHOT_POST_LIMIT),
+    posts: cappedPosts,
     failedRefreshes: refreshResult.failed,
     subredditSummaries,
     failedFetches,

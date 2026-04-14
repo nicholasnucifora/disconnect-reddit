@@ -463,8 +463,10 @@ export default function FeedClient() {
         throw new Error(error.message);
       }
 
-      await fetchPosts({ forceRefresh: true });
-      setRefreshMessage("Cleared removed post data for this account.");
+      if (!feedClearedRef.current) {
+        applyPosts(posts);
+      }
+      setRefreshMessage("Cleared removed post data. Refresh the feed to restore any previously hidden posts.");
     } catch (error) {
       setRefreshMessage(
         error instanceof Error ? error.message : "Failed to clear removed post data"
