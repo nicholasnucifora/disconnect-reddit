@@ -76,7 +76,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
       const cached = getCollection(cacheKey, normalizedSubreddit);
       if (cached && cached.posts.length > 0) {
         applyPosts(cached.posts);
-        if (cached.source === "subreddit") {
+        if (cached.source === "subreddit" || cached.source === "feed-derived") {
           setLoading(false);
           return;
         }
