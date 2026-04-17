@@ -83,11 +83,54 @@ function isGifOnlyComment(comment: RedditComment): boolean {
   return /\bgif\b/i.test(comment.body.trim());
 }
 
+function normalizeCommentBody(body: string): string {
+  return body.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function getCommentSemanticKey(comment: RedditComment): string | null {
+  const normalizedAuthor = comment.author.trim().toLowerCase();
+  const normalizedBody = normalizeCommentBody(comment.body);
+
+  if (
+    !normalizedAuthor ||
+    normalizedAuthor === "[deleted]" ||
+    normalizedBody.length < 48
+  ) {
+    return null;
+  }
+
+  return `${normalizedAuthor}::${normalizedBody}`;
+}
+
+function shouldMergeSemantically(existing: RedditComment, incoming: RedditComment): boolean {
+  const existingKey = getCommentSemanticKey(existing);
+  const incomingKey = getCommentSemanticKey(incoming);
+
+  if (!existingKey || !incomingKey || existingKey !== incomingKey) {
+    return false;
+  }
+
+  return Math.abs(existing.createdUtc - incoming.createdUtc) <= 10 * 60;
+}
+
+function mergeCommentInto(existing: RedditComment, incoming: RedditComment) {
+  existing.author =
+    existing.author === "[deleted]" && incoming.author !== "[deleted]"
+      ? incoming.author
+      : existing.author;
+  existing.body = existing.body.length >= incoming.body.length ? existing.body : incoming.body;
+  existing.score = Math.max(existing.score, incoming.score);
+  existing.createdUtc = Math.max(existing.createdUtc, incoming.createdUtc);
+  existing.count = Math.max(existing.count, incoming.count);
+  existing.replies = mergeCommentReplies(existing.replies, incoming.replies);
+}
+
 function mergeCommentReplies(
   existingReplies: CommentOrMore[],
   incomingReplies: CommentOrMore[]
 ): CommentOrMore[] {
   const existingById = new Map<string, RedditComment>();
+  const existingBySemanticKey = new Map<string, RedditComment>();
   const seenMoreKeys = new Set<string>();
 
   for (const reply of existingReplies) {
@@ -97,6 +140,10 @@ function mergeCommentReplies(
     }
 
     existingById.set(reply.id, reply);
+    const semanticKey = getCommentSemanticKey(reply);
+    if (semanticKey && !existingBySemanticKey.has(semanticKey)) {
+      existingBySemanticKey.set(semanticKey, reply);
+    }
   }
 
   for (const reply of incomingReplies) {
@@ -110,21 +157,24 @@ function mergeCommentReplies(
     }
 
     const existing = existingById.get(reply.id);
-    if (!existing) {
-      existingReplies.push(reply);
-      existingById.set(reply.id, reply);
+    if (existing) {
+      mergeCommentInto(existing, reply);
       continue;
     }
 
-    existing.author =
-      existing.author === "[deleted]" && reply.author !== "[deleted]"
-        ? reply.author
-        : existing.author;
-    existing.body = existing.body.length >= reply.body.length ? existing.body : reply.body;
-    existing.score = Math.max(existing.score, reply.score);
-    existing.createdUtc = Math.max(existing.createdUtc, reply.createdUtc);
-    existing.count = Math.max(existing.count, reply.count);
-    existing.replies = mergeCommentReplies(existing.replies, reply.replies);
+    const semanticKey = getCommentSemanticKey(reply);
+    const semanticMatch =
+      semanticKey ? existingBySemanticKey.get(semanticKey) : undefined;
+    if (semanticMatch && shouldMergeSemantically(semanticMatch, reply)) {
+      mergeCommentInto(semanticMatch, reply);
+      continue;
+    }
+
+    existingReplies.push(reply);
+    existingById.set(reply.id, reply);
+    if (semanticKey && !existingBySemanticKey.has(semanticKey)) {
+      existingBySemanticKey.set(semanticKey, reply);
+    }
   }
 
   const nonGifReplies = existingReplies.filter(
@@ -139,6 +189,7 @@ function mergeCommentReplies(
 
 function dedupeAndOrderComments(comments: CommentOrMore[]): CommentOrMore[] {
   const seenComments = new Map<string, RedditComment>();
+  const seenSemanticComments = new Map<string, RedditComment>();
   const seenMoreKeys = new Set<string>();
   const ordered: CommentOrMore[] = [];
 
@@ -156,19 +207,22 @@ function dedupeAndOrderComments(comments: CommentOrMore[]): CommentOrMore[] {
 
     const existing = seenComments.get(entry.id);
     if (existing) {
-      existing.author =
-        existing.author === "[deleted]" && entry.author !== "[deleted]"
-          ? entry.author
-          : existing.author;
-      existing.body = existing.body.length >= entry.body.length ? existing.body : entry.body;
-      existing.score = Math.max(existing.score, entry.score);
-      existing.createdUtc = Math.max(existing.createdUtc, entry.createdUtc);
-      existing.count = Math.max(existing.count, entry.count);
-      existing.replies = mergeCommentReplies(existing.replies, entry.replies);
+      mergeCommentInto(existing, entry);
+      continue;
+    }
+
+    const semanticKey = getCommentSemanticKey(entry);
+    const semanticMatch =
+      semanticKey ? seenSemanticComments.get(semanticKey) : undefined;
+    if (semanticMatch && shouldMergeSemantically(semanticMatch, entry)) {
+      mergeCommentInto(semanticMatch, entry);
       continue;
     }
 
     seenComments.set(entry.id, entry);
+    if (semanticKey && !seenSemanticComments.has(semanticKey)) {
+      seenSemanticComments.set(semanticKey, entry);
+    }
     ordered.push(entry);
   }
 
