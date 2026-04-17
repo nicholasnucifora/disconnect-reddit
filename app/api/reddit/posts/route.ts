@@ -15,6 +15,27 @@ import {
 
 export const runtime = "nodejs";
 
+const SUBREDDIT_ACTIVITY_REFRESH_LIMIT = 100;
+const SUBREDDIT_RECENT_REFRESH_LIMIT = 150;
+
+function selectPostsToRefresh(posts: RedditPost[]): RedditPost[] {
+  const selected = new Map<string, RedditPost>();
+
+  for (const post of posts.slice(0, SUBREDDIT_ACTIVITY_REFRESH_LIMIT)) {
+    selected.set(post.id, post);
+  }
+
+  const recentPosts = [...posts]
+    .sort((a, b) => b.createdUtc - a.createdUtc)
+    .slice(0, SUBREDDIT_RECENT_REFRESH_LIMIT);
+
+  for (const post of recentPosts) {
+    selected.set(post.id, post);
+  }
+
+  return Array.from(selected.values());
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const subredditsParam = searchParams.get("subreddits");
@@ -78,8 +99,7 @@ export async function GET(request: NextRequest) {
       });
 
     const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
-    const postsToRefresh = merged
-      .slice(0, 24)
+    const postsToRefresh = selectPostsToRefresh(merged)
       .filter((post) => {
         const cached = cachedCounts.get(post.id);
         return !cached || isCommentCountStale(cached);

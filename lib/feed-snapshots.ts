@@ -21,6 +21,29 @@ import { createClient } from "@/lib/supabase/server";
 
 const SNAPSHOT_TTL_MS = 12 * 60 * 60 * 1000;
 const SNAPSHOT_REFRESH_LIMIT = 48;
+const SNAPSHOT_RECENT_REFRESH_LIMIT = 200;
+
+function selectPostsToRefresh(
+  posts: RedditPost[],
+  desiredCount: number
+): RedditPost[] {
+  const targetCount = Math.max(desiredCount, SNAPSHOT_REFRESH_LIMIT);
+  const selected = new Map<string, RedditPost>();
+
+  for (const post of posts.slice(0, targetCount)) {
+    selected.set(post.id, post);
+  }
+
+  const recentPosts = [...posts]
+    .sort((a, b) => b.createdUtc - a.createdUtc)
+    .slice(0, Math.max(targetCount, SNAPSHOT_RECENT_REFRESH_LIMIT));
+
+  for (const post of recentPosts) {
+    selected.set(post.id, post);
+  }
+
+  return Array.from(selected.values());
+}
 
 export interface FeedSnapshotResult {
   posts: RedditPost[];
@@ -200,13 +223,13 @@ async function buildFeedPosts(
   const subredditRuleMap = createSubredditRuleMap(subredditRules);
   const merged = mergePosts(posts);
   const cachedCounts = await getCachedCommentCounts(merged.map((post) => post.id));
-  const postsToRefresh = merged
-    .slice(
-      0,
-      options.forceRefresh
-        ? totalRequestedPosts
-        : Math.min(totalRequestedPosts, SNAPSHOT_REFRESH_LIMIT)
-    )
+  const refreshCandidates = selectPostsToRefresh(
+    merged,
+    options.forceRefresh
+      ? totalRequestedPosts
+      : Math.min(totalRequestedPosts, SNAPSHOT_REFRESH_LIMIT)
+  );
+  const postsToRefresh = refreshCandidates
     .filter((post) => {
       if (options.forceRefresh) return true;
       const cached = cachedCounts.get(post.id);
