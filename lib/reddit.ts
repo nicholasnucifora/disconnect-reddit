@@ -67,6 +67,7 @@ export interface CommentFetchDiagnostics {
   filteredMismatchedRootParents: number;
   filteredOrphanReplies: number;
   filteredInvalidRows: number;
+  filteredRemovedComments: number;
 }
 
 export function countLoadedComments(comments: CommentOrMore[]): number {
@@ -228,6 +229,39 @@ export async function fetchPostComments(
   postId: string,
   _slug: string
 ): Promise<CommentTree> {
+  function isHiddenPlaceholder(comment: RedditComment): boolean {
+    const normalizedAuthor = comment.author.trim().toLowerCase();
+    const normalizedBody = comment.body.trim().toLowerCase();
+
+    return (
+      normalizedAuthor === "[deleted]" &&
+      (normalizedBody === "[removed]" || normalizedBody === "[deleted]")
+    );
+  }
+
+  function stripRemovedPlaceholders(comments: CommentOrMore[]): CommentOrMore[] {
+    const next: CommentOrMore[] = [];
+
+    for (const entry of comments) {
+      if (entry.isMore) {
+        next.push(entry);
+        continue;
+      }
+
+      entry.replies = stripRemovedPlaceholders(entry.replies);
+
+      if (isHiddenPlaceholder(entry)) {
+        diagnostics.filteredRemovedComments += 1;
+        next.push(...entry.replies);
+        continue;
+      }
+
+      next.push(entry);
+    }
+
+    return next;
+  }
+
   async function fetchCommentsPage(beforeUtc?: number) {
     const params = new URLSearchParams({
       link_id: postId,
@@ -337,6 +371,7 @@ export async function fetchPostComments(
     filteredMismatchedRootParents: 0,
     filteredOrphanReplies: 0,
     filteredInvalidRows: 0,
+    filteredRemovedComments: 0,
   };
   const seenCommentIds = new Set<string>();
   const normalizedRows: NormalizedArchiveCommentRow[] = [];
@@ -420,7 +455,9 @@ export async function fetchPostComments(
     }
   }
 
-  setDepths(roots, 0);
+  const visibleRoots = stripRemovedPlaceholders(roots);
+
+  setDepths(visibleRoots, 0);
 
   const hasDiagnostics = Object.entries(diagnostics).some(
     ([key, value]) => key !== "totalRows" && key !== "keptRows" && value > 0
@@ -430,7 +467,11 @@ export async function fetchPostComments(
     console.warn(`Comment fetch anomalies detected for post ${postId}`, diagnostics);
   }
 
-  return { post, comments: roots, diagnostics: hasDiagnostics ? diagnostics : undefined };
+  return {
+    post,
+    comments: visibleRoots,
+    diagnostics: hasDiagnostics ? diagnostics : undefined,
+  };
 }
 
 export async function fetchPostMetricsByIds(postIds: string[]): Promise<Map<string, RedditPostMetrics>> {
