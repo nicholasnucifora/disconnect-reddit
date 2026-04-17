@@ -70,6 +70,9 @@ export interface CommentFetchDiagnostics {
   filteredRemovedComments: number;
 }
 
+export const ARCHIVE_POST_LOOKBACK_DAYS = 7;
+export const ARCHIVE_POST_LOOKBACK_SECONDS = ARCHIVE_POST_LOOKBACK_DAYS * 24 * 60 * 60;
+
 export function countLoadedComments(comments: CommentOrMore[]): number {
   let count = 0;
   for (const comment of comments) {
@@ -77,6 +80,10 @@ export function countLoadedComments(comments: CommentOrMore[]): number {
     count += 1 + countLoadedComments(comment.replies);
   }
   return count;
+}
+
+export function getArchivePostAfterUtc(nowUtc = Math.floor(Date.now() / 1000)): number {
+  return nowUtc - ARCHIVE_POST_LOOKBACK_SECONDS;
 }
 
 function isGifOnlyComment(comment: RedditComment): boolean {

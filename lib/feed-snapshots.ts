@@ -9,7 +9,11 @@ import {
   type FailedCommentCountRefresh,
   refreshCommentCounts,
 } from "@/lib/comment-count-refresh";
-import { fetchSubredditPostsWindow, type RedditPost } from "@/lib/reddit";
+import {
+  fetchSubredditPostsWindow,
+  getArchivePostAfterUtc,
+  type RedditPost,
+} from "@/lib/reddit";
 import {
   applySubredditRuleCaps,
   createSubredditRuleMap,
@@ -142,11 +146,11 @@ async function getFeedSubreddits(feedId: string): Promise<SubredditRule[]> {
 }
 
 function mergePosts(posts: RedditPost[]): RedditPost[] {
-  const threeDaysAgo = Math.floor(Date.now() / 1000) - 3 * 24 * 60 * 60;
+  const earliestAllowedUtc = getArchivePostAfterUtc();
 
   return posts
     .filter((p) => !p.stickied)
-    .filter((p) => p.createdUtc >= threeDaysAgo)
+    .filter((p) => p.createdUtc >= earliestAllowedUtc)
     .filter(
       (p) =>
         p.author !== "[deleted]" &&
@@ -191,7 +195,7 @@ async function buildFeedPosts(
     };
   }
   const nowUtc = Math.floor(Date.now() / 1000);
-  const threeDaysAgo = nowUtc - 3 * 24 * 60 * 60;
+  const earliestAllowedUtc = getArchivePostAfterUtc(nowUtc);
   const totalRequestedPosts = subredditRules.reduce(
     (sum, rule) => sum + Math.max(1, rule.maxPosts),
     0
@@ -199,7 +203,7 @@ async function buildFeedPosts(
 
   const results = await Promise.allSettled(
     subredditRules.map((rule) =>
-      fetchSubredditPostsWindow(rule.subreddit, threeDaysAgo, nowUtc)
+      fetchSubredditPostsWindow(rule.subreddit, earliestAllowedUtc, nowUtc)
     )
   );
 

@@ -5,7 +5,11 @@ import {
   upsertCommentCounts,
 } from "@/lib/comment-count-cache";
 import { refreshCommentCounts } from "@/lib/comment-count-refresh";
-import { fetchSubredditPostsWindow, RedditPost } from "@/lib/reddit";
+import {
+  fetchSubredditPostsWindow,
+  getArchivePostAfterUtc,
+  RedditPost,
+} from "@/lib/reddit";
 import { loadUserSubredditRuleMap } from "@/lib/subreddit-rules-server";
 import {
   applySubredditRuleCaps,
@@ -63,10 +67,10 @@ export async function GET(request: NextRequest) {
   try {
     const subredditRuleMap = await loadUserSubredditRuleMap();
     const nowUtc = Math.floor(Date.now() / 1000);
-    const threeDaysAgo = nowUtc - 3 * 24 * 60 * 60;
+    const earliestAllowedUtc = getArchivePostAfterUtc(nowUtc);
     const results = await Promise.allSettled(
       subreddits.map((subreddit) =>
-        fetchSubredditPostsWindow(subreddit, threeDaysAgo, nowUtc)
+        fetchSubredditPostsWindow(subreddit, earliestAllowedUtc, nowUtc)
       )
     );
 
@@ -84,7 +88,7 @@ export async function GET(request: NextRequest) {
     // Filter out stickied, deleted, removed, and old posts; sort by comment activity then recency
     const merged = posts
       .filter((p) => !p.stickied)
-      .filter((p) => p.createdUtc >= threeDaysAgo)
+      .filter((p) => p.createdUtc >= earliestAllowedUtc)
       .filter(
         (p) =>
           p.author !== "[deleted]" &&
