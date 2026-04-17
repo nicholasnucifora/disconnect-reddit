@@ -99,6 +99,10 @@ export default function PostCard({ post, onDismiss, view = "default" }: PostCard
     setSwipeDragging(false);
   }
 
+  function shouldDismissOnOpen() {
+    return Boolean(onDismiss) && window.matchMedia("(min-width: 768px)").matches;
+  }
+
   function navigateToPost() {
     if (
       clicked ||
@@ -109,6 +113,9 @@ export default function PostCard({ post, onDismiss, view = "default" }: PostCard
       return;
     }
     setClicked(true);
+    if (shouldDismissOnOpen()) {
+      void onDismiss?.(post.id);
+    }
     router.push(detailUrl);
   }
 
