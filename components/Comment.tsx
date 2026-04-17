@@ -9,11 +9,13 @@ const MOBILE_COMMENT_MEDIA_QUERY = "(max-width: 767px)";
 const COMMENT_TAP_MAX_DURATION_MS = 250;
 const COMMENT_TAP_MAX_MOVEMENT_PX = 10;
 const COMMENT_COLLAPSE_SELECTION_RELEASE_DELAY_MS = 150;
+const COMMENT_TOUCH_COLLAPSE_COOLDOWN_MS = 260;
 const COMMENT_BODY_INTERACTIVE_SELECTOR =
   "a, button, input, textarea, select, summary, label, [data-comment-no-collapse='true']";
 const COMMENT_TAP_SELECTION_SUPPRESSION_CLASS = "comment-tap-selection-suppressed";
 
 let activeCommentSelectionSuppressionCount = 0;
+let lastMobileCollapseToggleAt = 0;
 
 function setCommentSelectionSuppressed(suppressed: boolean) {
   if (typeof document === "undefined") {
@@ -83,6 +85,30 @@ function hasActiveTextSelection(): boolean {
   }
 
   return (window.getSelection()?.toString().trim().length ?? 0) > 0;
+}
+
+function isMobileViewport(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.matchMedia(MOBILE_COMMENT_MEDIA_QUERY).matches;
+}
+
+function shouldSuppressMobileCollapseToggle(): boolean {
+  if (!isMobileViewport()) {
+    return false;
+  }
+
+  return Date.now() - lastMobileCollapseToggleAt < COMMENT_TOUCH_COLLAPSE_COOLDOWN_MS;
+}
+
+function markMobileCollapseToggle() {
+  if (!isMobileViewport()) {
+    return;
+  }
+
+  lastMobileCollapseToggleAt = Date.now();
 }
 
 function MoreStub({
@@ -208,6 +234,22 @@ function RegularComment({
   const descendantCount = countDescendants(replies);
   const nameColor = usernameColor(comment.author);
 
+  function toggleCollapsed() {
+    setCollapsed((current) => !current);
+    markMobileCollapseToggle();
+  }
+
+  function handleCollapseClick(event: React.MouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (shouldSuppressMobileCollapseToggle()) {
+      return;
+    }
+
+    toggleCollapsed();
+  }
+
   function handleCommentBodyPointerDown(event: React.PointerEvent<HTMLDivElement>) {
     if (!isMobileTouchPointer(event) || shouldSkipBodyCollapse(event.target)) {
       commentBodyTapStateRef.current = null;
@@ -267,8 +309,14 @@ function RegularComment({
     }
 
     event.preventDefault();
+    event.stopPropagation();
     window.getSelection()?.removeAllRanges();
-    setCollapsed((current) => !current);
+    if (shouldSuppressMobileCollapseToggle()) {
+      scheduleCommentSelectionRelease(COMMENT_COLLAPSE_SELECTION_RELEASE_DELAY_MS);
+      return;
+    }
+
+    toggleCollapsed();
     scheduleCommentSelectionRelease(COMMENT_COLLAPSE_SELECTION_RELEASE_DELAY_MS);
   }
 
@@ -277,8 +325,8 @@ function RegularComment({
       {/* Clickable thread line for nested comments */}
       {comment.depth > 0 && (
         <div
-          className="flex-shrink-0 w-6 flex justify-center cursor-pointer group"
-          onClick={() => setCollapsed((c) => !c)}
+          className="flex-shrink-0 w-6 touch-manipulation flex justify-center cursor-pointer group"
+          onClick={handleCollapseClick}
           title={collapsed ? "Expand" : "Collapse"}
         >
           <div className="w-px bg-gray-700 group-hover:bg-indigo-500 transition-colors" />
@@ -288,8 +336,8 @@ function RegularComment({
       <div className="flex-1 min-w-0">
         {/* Header — click to collapse */}
         <div
-          className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-2 cursor-pointer select-none group"
-          onClick={() => setCollapsed((c) => !c)}
+          className="flex touch-manipulation flex-wrap items-center gap-x-2 gap-y-0.5 mb-2 cursor-pointer select-none group"
+          onClick={handleCollapseClick}
         >
           <span className="font-mono text-gray-600 text-sm group-hover:text-gray-400 transition-colors">
             {collapsed ? "[+]" : "[-]"}
@@ -308,7 +356,7 @@ function RegularComment({
         {!collapsed && (
           <>
             <div
-              className="select-text"
+              className="select-text touch-manipulation"
               onPointerDown={handleCommentBodyPointerDown}
               onPointerMove={handleCommentBodyPointerMove}
               onPointerCancel={handleCommentBodyPointerCancel}

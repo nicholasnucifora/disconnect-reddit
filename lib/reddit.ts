@@ -79,6 +79,109 @@ export function countLoadedComments(comments: CommentOrMore[]): number {
   return count;
 }
 
+function isGifOnlyComment(comment: RedditComment): boolean {
+  return /\bgif\b/i.test(comment.body.trim());
+}
+
+function mergeCommentReplies(
+  existingReplies: CommentOrMore[],
+  incomingReplies: CommentOrMore[]
+): CommentOrMore[] {
+  const existingById = new Map<string, RedditComment>();
+  const seenMoreKeys = new Set<string>();
+
+  for (const reply of existingReplies) {
+    if (reply.isMore) {
+      seenMoreKeys.add(`${reply.id}:${reply.parentId}`);
+      continue;
+    }
+
+    existingById.set(reply.id, reply);
+  }
+
+  for (const reply of incomingReplies) {
+    if (reply.isMore) {
+      const key = `${reply.id}:${reply.parentId}`;
+      if (!seenMoreKeys.has(key)) {
+        existingReplies.push(reply);
+        seenMoreKeys.add(key);
+      }
+      continue;
+    }
+
+    const existing = existingById.get(reply.id);
+    if (!existing) {
+      existingReplies.push(reply);
+      existingById.set(reply.id, reply);
+      continue;
+    }
+
+    existing.author =
+      existing.author === "[deleted]" && reply.author !== "[deleted]"
+        ? reply.author
+        : existing.author;
+    existing.body = existing.body.length >= reply.body.length ? existing.body : reply.body;
+    existing.score = Math.max(existing.score, reply.score);
+    existing.createdUtc = Math.max(existing.createdUtc, reply.createdUtc);
+    existing.count = Math.max(existing.count, reply.count);
+    existing.replies = mergeCommentReplies(existing.replies, reply.replies);
+  }
+
+  const nonGifReplies = existingReplies.filter(
+    (reply) => reply.isMore || !isGifOnlyComment(reply)
+  );
+  const gifReplies = existingReplies.filter(
+    (reply) => !reply.isMore && isGifOnlyComment(reply)
+  );
+
+  return [...nonGifReplies, ...gifReplies];
+}
+
+function dedupeAndOrderComments(comments: CommentOrMore[]): CommentOrMore[] {
+  const seenComments = new Map<string, RedditComment>();
+  const seenMoreKeys = new Set<string>();
+  const ordered: CommentOrMore[] = [];
+
+  for (const entry of comments) {
+    if (entry.isMore) {
+      const key = `${entry.id}:${entry.parentId}`;
+      if (!seenMoreKeys.has(key)) {
+        ordered.push(entry);
+        seenMoreKeys.add(key);
+      }
+      continue;
+    }
+
+    entry.replies = dedupeAndOrderComments(entry.replies);
+
+    const existing = seenComments.get(entry.id);
+    if (existing) {
+      existing.author =
+        existing.author === "[deleted]" && entry.author !== "[deleted]"
+          ? entry.author
+          : existing.author;
+      existing.body = existing.body.length >= entry.body.length ? existing.body : entry.body;
+      existing.score = Math.max(existing.score, entry.score);
+      existing.createdUtc = Math.max(existing.createdUtc, entry.createdUtc);
+      existing.count = Math.max(existing.count, entry.count);
+      existing.replies = mergeCommentReplies(existing.replies, entry.replies);
+      continue;
+    }
+
+    seenComments.set(entry.id, entry);
+    ordered.push(entry);
+  }
+
+  const nonGifComments = ordered.filter(
+    (entry) => entry.isMore || !isGifOnlyComment(entry)
+  );
+  const gifComments = ordered.filter(
+    (entry) => !entry.isMore && isGifOnlyComment(entry)
+  );
+
+  return [...nonGifComments, ...gifComments];
+}
+
 const BROWSER_HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0",
@@ -455,7 +558,7 @@ export async function fetchPostComments(
     }
   }
 
-  const visibleRoots = stripRemovedPlaceholders(roots);
+  const visibleRoots = dedupeAndOrderComments(stripRemovedPlaceholders(roots));
 
   setDepths(visibleRoots, 0);
 
