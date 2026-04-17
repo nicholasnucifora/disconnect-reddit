@@ -70,8 +70,8 @@ export interface CommentFetchDiagnostics {
   filteredRemovedComments: number;
 }
 
-export const ARCHIVE_POST_LOOKBACK_DAYS = 7;
-export const ARCHIVE_POST_LOOKBACK_SECONDS = ARCHIVE_POST_LOOKBACK_DAYS * 24 * 60 * 60;
+export const DIGEST_POST_LOOKBACK_DAYS = 3;
+export const DIGEST_POST_LOOKBACK_SECONDS = DIGEST_POST_LOOKBACK_DAYS * 24 * 60 * 60;
 
 export function countLoadedComments(comments: CommentOrMore[]): number {
   let count = 0;
@@ -83,7 +83,44 @@ export function countLoadedComments(comments: CommentOrMore[]): number {
 }
 
 export function getArchivePostAfterUtc(nowUtc = Math.floor(Date.now() / 1000)): number {
-  return nowUtc - ARCHIVE_POST_LOOKBACK_SECONDS;
+  return nowUtc - DIGEST_POST_LOOKBACK_SECONDS;
+}
+
+export function mergeRedditPosts(posts: RedditPost[]): RedditPost[] {
+  const merged = new Map<string, RedditPost>();
+
+  for (const post of posts) {
+    const existing = merged.get(post.id);
+    if (!existing) {
+      merged.set(post.id, post);
+      continue;
+    }
+
+    merged.set(post.id, {
+      ...existing,
+      ...post,
+      title: post.title || existing.title,
+      author: post.author && post.author !== "[deleted]" ? post.author : existing.author,
+      subreddit: post.subreddit || existing.subreddit,
+      url: post.url || existing.url,
+      permalink: post.permalink || existing.permalink,
+      thumbnail: post.thumbnail ?? existing.thumbnail,
+      selftext: post.selftext || existing.selftext,
+      flair: post.flair ?? existing.flair,
+      domain: post.domain || existing.domain,
+      numComments: Math.max(existing.numComments, post.numComments),
+      score: Math.max(existing.score, post.score),
+      createdUtc: Math.max(existing.createdUtc, post.createdUtc),
+      isVideo: existing.isVideo || post.isVideo,
+      isSelf: existing.isSelf || post.isSelf,
+      stickied: existing.stickied || post.stickied,
+      isGallery: existing.isGallery || post.isGallery,
+      galleryImages:
+        post.galleryImages.length > 0 ? post.galleryImages : existing.galleryImages,
+    });
+  }
+
+  return Array.from(merged.values());
 }
 
 function isGifOnlyComment(comment: RedditComment): boolean {

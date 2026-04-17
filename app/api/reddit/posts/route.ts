@@ -8,8 +8,10 @@ import { refreshCommentCounts } from "@/lib/comment-count-refresh";
 import {
   fetchSubredditPostsWindow,
   getArchivePostAfterUtc,
+  mergeRedditPosts,
   RedditPost,
 } from "@/lib/reddit";
+import { fetchRecentDiscoveryPosts } from "@/lib/recent-post-discovery";
 import { loadUserSubredditRuleMap } from "@/lib/subreddit-rules-server";
 import {
   applySubredditRuleCaps,
@@ -73,6 +75,7 @@ export async function GET(request: NextRequest) {
         fetchSubredditPostsWindow(subreddit, earliestAllowedUtc, nowUtc)
       )
     );
+    const recentDiscovery = await fetchRecentDiscoveryPosts(subreddits, nowUtc);
 
     const posts: RedditPost[] = [];
     const errors: string[] = [];
@@ -85,8 +88,15 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    posts.push(...recentDiscovery.posts);
+    errors.push(
+      ...recentDiscovery.errors.map(
+        (entry) => `r/${entry.subreddit}: ${entry.error}`
+      )
+    );
+
     // Filter out stickied, deleted, removed, and old posts; sort by comment activity then recency
-    const merged = posts
+    const merged = mergeRedditPosts(posts)
       .filter((p) => !p.stickied)
       .filter((p) => p.createdUtc >= earliestAllowedUtc)
       .filter(

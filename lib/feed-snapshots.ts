@@ -12,8 +12,10 @@ import {
 import {
   fetchSubredditPostsWindow,
   getArchivePostAfterUtc,
+  mergeRedditPosts,
   type RedditPost,
 } from "@/lib/reddit";
+import { fetchRecentDiscoveryPosts } from "@/lib/recent-post-discovery";
 import {
   applySubredditRuleCaps,
   createSubredditRuleMap,
@@ -148,7 +150,7 @@ async function getFeedSubreddits(feedId: string): Promise<SubredditRule[]> {
 function mergePosts(posts: RedditPost[]): RedditPost[] {
   const earliestAllowedUtc = getArchivePostAfterUtc();
 
-  return posts
+  return mergeRedditPosts(posts)
     .filter((p) => !p.stickied)
     .filter((p) => p.createdUtc >= earliestAllowedUtc)
     .filter(
@@ -206,6 +208,10 @@ async function buildFeedPosts(
       fetchSubredditPostsWindow(rule.subreddit, earliestAllowedUtc, nowUtc)
     )
   );
+  const recentDiscovery = await fetchRecentDiscoveryPosts(
+    subredditRules.map((rule) => rule.subreddit),
+    nowUtc
+  );
 
   const posts: RedditPost[] = [];
   const candidateCounts = new Map<string, number>();
@@ -223,6 +229,17 @@ async function buildFeedPosts(
       error: result.reason instanceof Error ? result.reason.message : "Unknown error",
     });
   });
+
+  if (recentDiscovery.posts.length > 0) {
+    posts.push(...recentDiscovery.posts);
+  }
+
+  for (const post of recentDiscovery.posts) {
+    const subreddit = normalizeSubreddit(post.subreddit);
+    candidateCounts.set(subreddit, (candidateCounts.get(subreddit) ?? 0) + 1);
+  }
+
+  failedFetches.push(...recentDiscovery.errors);
 
   const subredditRuleMap = createSubredditRuleMap(subredditRules);
   const merged = mergePosts(posts);
