@@ -12,6 +12,7 @@ import {
   persistDismissedPost,
 } from "@/lib/post-feed-cache";
 import { RedditPost } from "@/lib/reddit";
+import FeedCompletionState from "./FeedCompletionState";
 import PostCard from "./PostCard";
 
 interface SubredditFeedProps {
@@ -22,6 +23,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
   const [posts, setPosts] = useState<RedditPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [preparedPostCount, setPreparedPostCount] = useState(0);
 
   const supabase = createClient();
   const {
@@ -72,11 +74,17 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
       setError(null);
       setLoading(true);
       setPosts([]);
+      setPreparedPostCount(0);
 
       const cached = getCollection(cacheKey, normalizedSubreddit);
-      if (cached && cached.posts.length > 0) {
+      if (cached) {
+        setPreparedPostCount(cached.posts.length);
         applyPosts(cached.posts);
-        if (cached.source === "subreddit" || cached.source === "feed-derived") {
+        if (
+          cached.posts.length === 0 ||
+          cached.source === "subreddit" ||
+          cached.source === "feed-derived"
+        ) {
           setLoading(false);
           return;
         }
@@ -108,6 +116,7 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
           source: "subreddit",
           scopeToken: normalizedSubreddit,
         });
+        setPreparedPostCount(hydratedPosts.length);
         applyPosts(hydratedPosts);
       } catch (fetchError) {
         if (cancelled || requestIdRef.current !== requestId) return;
@@ -155,7 +164,10 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
     <main className="min-h-screen bg-gray-950">
       <div className="mx-auto max-w-4xl px-4 py-8">
         <h1 className="mb-6 text-xl font-bold text-teal-400">r/{subreddit}</h1>
-        <p className="mb-6 text-sm text-gray-500">{posts.length} loaded</p>
+        <p className="mb-6 text-sm text-gray-500">
+          {posts.length} loaded
+          {preparedPostCount > posts.length ? ` of ${preparedPostCount} prepared` : ""}
+        </p>
 
         {loading && (
           <div className="flex items-center justify-center py-16">
@@ -166,7 +178,23 @@ export default function SubredditFeed({ subreddit }: SubredditFeedProps) {
         {error && <p className="py-8 text-center text-sm text-red-400">{error}</p>}
 
         {!loading && !error && posts.length === 0 && (
-          <p className="py-8 text-center text-sm text-gray-500">No posts found</p>
+          preparedPostCount > 0 ? (
+            <div className="py-4">
+              <FeedCompletionState
+                title="Everything here is hidden"
+                description="You already cleared every prepared post in this subreddit. If you want them back, clear your removed-post data. Otherwise, you're done here for now."
+                note={`r/${subreddit}`}
+              />
+            </div>
+          ) : (
+            <div className="py-4">
+              <FeedCompletionState
+                title="You've gone through all the posts for today"
+                description="There is nothing else queued for this subreddit right now. Close the loop, get off the app, and come back tomorrow for a fresh batch."
+                note={`r/${subreddit}`}
+              />
+            </div>
+          )
         )}
 
         {posts.length > 0 && (

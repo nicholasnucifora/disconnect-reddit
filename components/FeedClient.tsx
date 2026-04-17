@@ -19,6 +19,7 @@ import {
 import { RedditPost } from "@/lib/reddit";
 import { useFeeds } from "@/lib/feeds-context";
 import { useSubreddits } from "@/lib/subreddits-context";
+import FeedCompletionState from "./FeedCompletionState";
 import PostCard from "./PostCard";
 
 function mergeFeedPosts(postGroups: RedditPost[][]): RedditPost[] {
@@ -615,14 +616,24 @@ export default function FeedClient() {
               : "No subreddits in this feed - drag some over from another feed"}
           </p>
         ) : visiblePosts.length === 0 ? (
-          <div className="space-y-2 py-16">
-            <p className="text-center text-sm text-gray-500">
-              {feedCleared
-                ? "Feed data cleared. Refresh to rebuild this snapshot."
-                : preparedPostCount > 0
-                ? `Prepared ${preparedPostCount} posts, but they are currently hidden by removed posts.`
-                : "No posts found"}
-            </p>
+          <div className="space-y-2">
+            {feedCleared ? (
+              <p className="py-16 text-center text-sm text-gray-500">
+                Feed data cleared. Refresh to rebuild this snapshot.
+              </p>
+            ) : preparedPostCount > 0 ? (
+              <FeedCompletionState
+                title="Everything in this feed is hidden"
+                description={`You already removed all ${preparedPostCount} prepared posts in this feed. If that was intentional, you are done here for now.`}
+                note={activeFeedName}
+              />
+            ) : (
+              <FeedCompletionState
+                title="You've gone through all the posts for today"
+                description="This feed has already served the current batch within your limits. Take the win, close the app, and come back tomorrow for more."
+                note={activeFeedName}
+              />
+            )}
             {fetchErrors.length > 0 && (
               <div className="space-y-1 rounded bg-red-950/40 p-3 text-xs text-red-400">
                 {fetchErrors.map((error, index) => (
