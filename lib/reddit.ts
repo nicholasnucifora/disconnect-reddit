@@ -86,6 +86,9 @@ const BROWSER_HEADERS = {
   "Accept-Encoding": "gzip, deflate, br",
 };
 
+const COMMENT_PAGE_SIZE = 100;
+const MAX_COMMENT_PAGES = 20;
+
 // Arctic Shift returns posts as flat objects (no {kind, data} wrapper)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function mapArchivePost(d: any): RedditPost {
@@ -225,14 +228,38 @@ export async function fetchPostComments(
   postId: string,
   _slug: string
 ): Promise<CommentTree> {
-  const [postRes, commentsRes] = await Promise.all([
-    fetch(`https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`, {
-      headers: BROWSER_HEADERS,
-    }),
-    fetch(`https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=500`, {
-      headers: BROWSER_HEADERS,
-    }),
-  ]);
+  async function fetchCommentsPage(beforeUtc?: number) {
+    const params = new URLSearchParams({
+      link_id: postId,
+      limit: String(COMMENT_PAGE_SIZE),
+      sort: "desc",
+    });
+
+    if (typeof beforeUtc === "number") {
+      params.set("before", String(beforeUtc));
+    }
+
+    const response = await fetch(
+      `https://arctic-shift.photon-reddit.com/api/comments/search?${params.toString()}`,
+      {
+        headers: BROWSER_HEADERS,
+      }
+    );
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "");
+      throw new Error(
+        `Failed to fetch comments for post ${postId}: ${response.status} ${response.statusText} - ${body}`
+      );
+    }
+
+    const json = await response.json();
+    return (json?.data ?? json?.results ?? []) as ArchiveCommentRow[];
+  }
+
+  const postPromise = fetch(`https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`, {
+    headers: BROWSER_HEADERS,
+  });
 
   let post: RedditPost = {
     id: postId,
@@ -255,20 +282,6 @@ export async function fetchPostComments(
     galleryImages: [],
   };
 
-  if (postRes.ok) {
-    const postJson = await postRes.json();
-    const postData = postJson?.data?.[0];
-    if (postData) post = mapArchivePost(postData);
-  }
-
-  if (!commentsRes.ok) {
-    const body = await commentsRes.text().catch(() => "");
-    throw new Error(
-      `Failed to fetch comments for post ${postId}: ${commentsRes.status} ${commentsRes.statusText} - ${body}`
-    );
-  }
-
-  const json = await commentsRes.json();
   type ArchiveCommentRow = {
     id?: string;
     author?: string;
@@ -280,7 +293,41 @@ export async function fetchPostComments(
   };
   type NormalizedArchiveCommentRow = ArchiveCommentRow & { id: string };
 
-  const flat = (json?.data ?? json?.results ?? []) as ArchiveCommentRow[];
+  const firstPage = await fetchCommentsPage();
+  const postRes = await postPromise;
+
+  if (postRes.ok) {
+    const postJson = await postRes.json();
+    const postData = postJson?.data?.[0];
+    if (postData) post = mapArchivePost(postData);
+  }
+
+  const flat: ArchiveCommentRow[] = [...firstPage];
+  let currentPage = firstPage;
+  let pagesFetched = 1;
+
+  while (currentPage.length === COMMENT_PAGE_SIZE && pagesFetched < MAX_COMMENT_PAGES) {
+    const oldestCreatedUtc = currentPage.reduce(
+      (oldest, comment) =>
+        typeof comment.created_utc === "number"
+          ? Math.min(oldest, comment.created_utc)
+          : oldest,
+      currentPage[0]?.created_utc ?? Number.NaN
+    );
+
+    if (!Number.isFinite(oldestCreatedUtc)) {
+      break;
+    }
+
+    currentPage = await fetchCommentsPage(oldestCreatedUtc - 1);
+    if (currentPage.length === 0) {
+      break;
+    }
+
+    flat.push(...currentPage);
+    pagesFetched += 1;
+  }
+
   const expectedLinkId = `t3_${postId}`;
   const diagnostics: CommentFetchDiagnostics = {
     totalRows: flat.length,
