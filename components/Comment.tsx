@@ -316,7 +316,6 @@ function RegularComment({
             >
               <RedditMarkdown className="text-base text-gray-200 leading-relaxed prose prose-invert max-w-none
                 prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
-                prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
                 prose-strong:text-gray-100 prose-em:text-gray-300
                 mb-3">
                 {comment.body}

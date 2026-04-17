@@ -410,7 +410,6 @@ export default function PostPage() {
                   <RedditMarkdown
                     className="prose prose-invert max-w-none text-base leading-relaxed text-gray-300
                     prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
-                    prose-blockquote:border-l-2 prose-blockquote:border-gray-600 prose-blockquote:text-gray-400
                     prose-em:text-gray-300 prose-strong:text-gray-100
                     prose-table:text-gray-300 prose-td:text-gray-300 prose-th:text-gray-200"
                   >

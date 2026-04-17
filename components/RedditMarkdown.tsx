@@ -64,43 +64,48 @@ interface RedditMarkdownProps {
 export default function RedditMarkdown({ children, className }: RedditMarkdownProps) {
   return (
     <div className={className}>
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm, remarkBreaks, remarkSpoiler]}
-      components={{
-        a: ({ href, children: c }) => (
-          <a href={href} target="_blank" rel="noopener noreferrer">
-            {c}
-          </a>
-        ),
-        h1: ({ children: c }) => <p className="font-bold text-base">{c}</p>,
-        h2: ({ children: c }) => <p className="font-bold">{c}</p>,
-        h3: ({ children: c }) => <p className="font-semibold">{c}</p>,
-        pre: ({ children: c }) => (
-          <pre className="bg-gray-800 rounded p-3 overflow-x-auto my-2 text-sm">
-            {c}
-          </pre>
-        ),
-        code: ({ children: c, className: cn }) => {
-          const text = String(c);
-          // Spoiler nodes injected by remarkSpoiler
-          if (text.startsWith(SPOILER_PREFIX)) {
-            return <SpoilerText text={text.slice(SPOILER_PREFIX.length)} />;
-          }
-          // Block code (inside <pre>): just pass through with language class
-          if (cn?.startsWith("language-")) {
-            return <code className={cn}>{c}</code>;
-          }
-          // Inline code
-          return (
-            <code className="text-amber-300 bg-gray-800 px-1 rounded">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkBreaks, remarkSpoiler]}
+        components={{
+          a: ({ href, children: c }) => (
+            <a href={href} target="_blank" rel="noopener noreferrer">
               {c}
-            </code>
-          );
-        },
-      }}
-    >
-      {children}
-    </ReactMarkdown>
+            </a>
+          ),
+          h1: ({ children: c }) => <p className="font-bold text-base">{c}</p>,
+          h2: ({ children: c }) => <p className="font-bold">{c}</p>,
+          h3: ({ children: c }) => <p className="font-semibold">{c}</p>,
+          blockquote: ({ children: c }) => (
+            <blockquote className="my-4 rounded-r-lg border-l-4 border-emerald-400/70 bg-emerald-500/10 px-4 py-3 text-gray-300 not-italic [&>*:first-child]:mt-0 [&>*:last-child]:mb-0">
+              {c}
+            </blockquote>
+          ),
+          pre: ({ children: c }) => (
+            <pre className="bg-gray-800 rounded p-3 overflow-x-auto my-2 text-sm">
+              {c}
+            </pre>
+          ),
+          code: ({ children: c, className: cn }) => {
+            const text = String(c);
+            // Spoiler nodes injected by remarkSpoiler
+            if (text.startsWith(SPOILER_PREFIX)) {
+              return <SpoilerText text={text.slice(SPOILER_PREFIX.length)} />;
+            }
+            // Block code (inside <pre>): just pass through with language class
+            if (cn?.startsWith("language-")) {
+              return <code className={cn}>{c}</code>;
+            }
+            // Inline code
+            return (
+              <code className="text-amber-300 bg-gray-800 px-1 rounded">
+                {c}
+              </code>
+            );
+          },
+        }}
+      >
+        {children}
+      </ReactMarkdown>
     </div>
   );
 }
