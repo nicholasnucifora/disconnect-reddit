@@ -50,12 +50,23 @@ export type CommentOrMore = RedditComment | RedditMoreComments;
 export interface CommentTree {
   post: RedditPost;
   comments: CommentOrMore[];
+  diagnostics?: CommentFetchDiagnostics;
 }
 
 export interface RedditPostMetrics {
   postId: string;
   numComments: number;
   score: number;
+}
+
+export interface CommentFetchDiagnostics {
+  totalRows: number;
+  keptRows: number;
+  filteredDuplicateIds: number;
+  filteredMismatchedLinkIds: number;
+  filteredMismatchedRootParents: number;
+  filteredOrphanReplies: number;
+  filteredInvalidRows: number;
 }
 
 export function countLoadedComments(comments: CommentOrMore[]): number {
@@ -218,7 +229,7 @@ export async function fetchPostComments(
     fetch(`https://arctic-shift.photon-reddit.com/api/posts/ids?ids=${postId}`, {
       headers: BROWSER_HEADERS,
     }),
-    fetch(`https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=100`, {
+    fetch(`https://arctic-shift.photon-reddit.com/api/comments/search?link_id=${postId}&limit=500`, {
       headers: BROWSER_HEADERS,
     }),
   ]);
@@ -258,11 +269,59 @@ export async function fetchPostComments(
   }
 
   const json = await commentsRes.json();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const flat: any[] = json?.data ?? json?.results ?? [];
+  type ArchiveCommentRow = {
+    id?: string;
+    author?: string;
+    body?: string;
+    score?: number;
+    created_utc?: number;
+    parent_id?: string;
+    link_id?: string;
+  };
+  type NormalizedArchiveCommentRow = ArchiveCommentRow & { id: string };
+
+  const flat = (json?.data ?? json?.results ?? []) as ArchiveCommentRow[];
+  const expectedLinkId = `t3_${postId}`;
+  const diagnostics: CommentFetchDiagnostics = {
+    totalRows: flat.length,
+    keptRows: 0,
+    filteredDuplicateIds: 0,
+    filteredMismatchedLinkIds: 0,
+    filteredMismatchedRootParents: 0,
+    filteredOrphanReplies: 0,
+    filteredInvalidRows: 0,
+  };
+  const seenCommentIds = new Set<string>();
+  const normalizedRows: NormalizedArchiveCommentRow[] = [];
+
+  for (const row of flat) {
+    if (!row?.id) {
+      diagnostics.filteredInvalidRows += 1;
+      continue;
+    }
+
+    if (
+      row.link_id &&
+      row.link_id !== postId &&
+      row.link_id !== expectedLinkId
+    ) {
+      diagnostics.filteredMismatchedLinkIds += 1;
+      continue;
+    }
+
+    if (seenCommentIds.has(row.id)) {
+      diagnostics.filteredDuplicateIds += 1;
+      continue;
+    }
+
+    seenCommentIds.add(row.id);
+    normalizedRows.push({ ...row, id: row.id });
+  }
+
+  diagnostics.keptRows = normalizedRows.length;
 
   const commentMap = new Map<string, RedditComment>();
-  for (const d of flat) {
+  for (const d of normalizedRows) {
     commentMap.set(d.id, {
       id: d.id,
       author: d.author ?? "[deleted]",
@@ -277,18 +336,31 @@ export async function fetchPostComments(
   }
 
   const roots: CommentOrMore[] = [];
-  for (const d of flat) {
+  for (const d of normalizedRows) {
     const comment = commentMap.get(d.id);
     if (!comment) continue;
-    if (d.parent_id?.startsWith("t3_")) {
+
+    if (!d.parent_id) {
+      diagnostics.filteredInvalidRows += 1;
+      continue;
+    }
+
+    if (d.parent_id.startsWith("t3_") || d.parent_id === postId) {
+      if (d.parent_id !== expectedLinkId && d.parent_id !== postId) {
+        diagnostics.filteredMismatchedRootParents += 1;
+        continue;
+      }
+
       roots.push(comment);
-    } else if (d.parent_id?.startsWith("t1_")) {
+    } else if (d.parent_id.startsWith("t1_")) {
       const parent = commentMap.get(d.parent_id.slice(3));
       if (parent) {
         parent.replies.push(comment);
       } else {
-        roots.push(comment);
+        diagnostics.filteredOrphanReplies += 1;
       }
+    } else {
+      diagnostics.filteredInvalidRows += 1;
     }
   }
 
@@ -303,7 +375,15 @@ export async function fetchPostComments(
 
   setDepths(roots, 0);
 
-  return { post, comments: roots };
+  const hasDiagnostics = Object.entries(diagnostics).some(
+    ([key, value]) => key !== "totalRows" && key !== "keptRows" && value > 0
+  );
+
+  if (hasDiagnostics) {
+    console.warn(`Comment fetch anomalies detected for post ${postId}`, diagnostics);
+  }
+
+  return { post, comments: roots, diagnostics: hasDiagnostics ? diagnostics : undefined };
 }
 
 export async function fetchPostMetricsByIds(postIds: string[]): Promise<Map<string, RedditPostMetrics>> {

@@ -36,6 +36,17 @@ function hasPostContent(post: RedditPost | null | undefined): post is RedditPost
   );
 }
 
+function readCachedPost(postId: string): RedditPost | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const cached = localStorage.getItem(`post:${postId}`);
+    return cached ? (JSON.parse(cached) as RedditPost) : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function PostPage() {
   const params = useParams();
   const router = useRouter();
@@ -45,15 +56,7 @@ export default function PostPage() {
   const postId = params.postId as string;
   const slug = params.slug as string;
 
-  const [post, setPost] = useState<RedditPost | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const cached = localStorage.getItem(`post:${postId}`);
-      return cached ? JSON.parse(cached) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [post, setPost] = useState<RedditPost | null>(() => readCachedPost(postId));
   const [comments, setComments] = useState<CommentOrMore[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -68,10 +71,23 @@ export default function PostPage() {
   const galleryTranslate = `calc(${-galleryIndex * 100}% + ${galleryTouchDeltaX + galleryRubberbandOffset}px)`;
 
   useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+
+    setLoading(true);
+    setError(null);
+    setComments([]);
+    setPost(readCachedPost(postId));
+    setGalleryIndex(0);
+    setGalleryTouchStartX(null);
+    setGalleryTouchDeltaX(0);
+    setGalleryRubberbandOffset(0);
+
     async function load() {
       try {
         const res = await fetch(
-          `/api/reddit/comments?${new URLSearchParams({ subreddit, postId, slug })}`
+          `/api/reddit/comments?${new URLSearchParams({ subreddit, postId, slug })}`,
+          { signal: controller.signal }
         );
         if (!res.ok) {
           const body = await res.json().catch(() => ({}));
@@ -79,7 +95,17 @@ export default function PostPage() {
         }
 
         const data = await res.json();
+        if (cancelled) return;
+
         const nextComments = data.comments ?? [];
+        if (data.diagnostics) {
+          console.warn("Comment fetch diagnostics", {
+            subreddit,
+            postId,
+            diagnostics: data.diagnostics,
+          });
+        }
+
         setPost((currentPost) => {
           const apiPost = hasPostContent(data.post) ? data.post : null;
           const basePost = apiPost ?? currentPost;
@@ -105,13 +131,24 @@ export default function PostPage() {
 
         setComments(nextComments);
       } catch (err) {
+        if (cancelled || (err instanceof DOMException && err.name === "AbortError")) {
+          return;
+        }
+
         setError(err instanceof Error ? err.message : "Failed to load");
       } finally {
-        setLoading(false);
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
 
-    load();
+    void load();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [subreddit, postId, slug]);
 
   useEffect(() => {
