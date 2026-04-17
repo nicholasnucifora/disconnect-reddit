@@ -104,16 +104,17 @@ export default function PostCard({ post, onDismiss, view = "default" }: PostCard
   }
 
   function navigateToPost() {
+    const dismissOnOpen = shouldDismissOnOpen();
     if (
-      clicked ||
+      (dismissOnOpen && clicked) ||
       cardSwipeActiveRef.current ||
       Math.abs(swipeOffsetRef.current) > 8 ||
       Date.now() < suppressClickUntilRef.current
     ) {
       return;
     }
-    setClicked(true);
-    if (shouldDismissOnOpen()) {
+    if (dismissOnOpen) {
+      setClicked(true);
       void onDismiss?.(post.id);
     }
     router.push(detailUrl);
